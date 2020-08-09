@@ -34,7 +34,7 @@ impl Mig {
         for record in reader.records() {
             match record.unwrap() {
                 aiger::Aiger::Input(l) => {
-                    *&mut mig.graph[NodeIndex::new(l.variable())] = MigNode::Input(l.variable() as u32);
+                    mig.graph[NodeIndex::new(l.variable())] = MigNode::Input(l.variable() as u32);
                 },
                 aiger::Aiger::Latch { output, input } => {
                     todo!("latches")
@@ -100,5 +100,21 @@ impl Mig {
         }
 
         println!("}}");
+    }
+
+    pub fn graph(&self) -> &StableGraph<MigNode, bool> {
+        &self.graph
+    }
+
+    pub fn graph_mut(&mut self) -> &mut StableGraph<MigNode, bool> {
+        &mut self.graph
+    }
+
+    pub fn try_unwrap_majority(&self, node: NodeIndex) -> Option<(NodeIndex, NodeIndex, NodeIndex)> {
+        let mut iter = self.graph.neighbors_directed(node, Incoming);
+        if let (Some(x), Some(y), Some(z)) = (iter.next(), iter.next(), iter.next()) {
+            return Some((x, y, z))
+        }
+        None
     }
 }
