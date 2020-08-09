@@ -22,26 +22,35 @@ impl Mig {
         let mut mig = Self::default();
 
         mig.zero = mig.graph.add_node(MigNode::Zero);
+        assert_eq!(mig.zero.index(), 0);
+
+        // Pre-emptively mark every variable as a majority gate - most will be
+        // but we'll replace those that aren't while we parse.
+        for variable in 1..=reader.header().m {
+            let node_index = mig.graph.add_node(MigNode::Majority);
+            assert_eq!(node_index.index(), variable);
+        }
 
         for record in reader.records() {
             match record.unwrap() {
-                aiger::Aiger::Input(Literal(index)) => {
-                    mig.graph.add_node(MigNode::Input(index as u32));
+                aiger::Aiger::Input(l) => {
+                    *&mut mig.graph[NodeIndex::new(l.variable())] = MigNode::Input(l.variable() as u32);
                 },
                 aiger::Aiger::Latch { output, input } => {
                     todo!("latches")
                 },
-                aiger::Aiger::Output(Literal(index)) => {
-                    mig.graph.add_node(MigNode::Output(index as u32));
+                aiger::Aiger::Output(l) => {
+                    let output_node = mig.graph.add_node(MigNode::Output(l.variable() as u32));
+                    mig.graph.update_edge(NodeIndex::new(l.variable()), output_node, l.is_inverted());
                 },
                 aiger::Aiger::AndGate { output, inputs } => {
-                    //let Literal(output) = output;
-                    let Literal(input0) = inputs[0];
-                    let Literal(input1) = inputs[1];
+                    let input0 = inputs[0];
+                    let input1 = inputs[1];
 
-                    let gate = mig.graph.add_node(MigNode::Majority);
-                    mig.graph.update_edge(NodeIndex::new(input0 >> 1), gate, input0 & 1 == 1);
-                    mig.graph.update_edge(NodeIndex::new(input1 >> 1), gate, input1 & 1 == 1);
+                    let gate = NodeIndex::new(output.variable());
+
+                    mig.graph.update_edge(NodeIndex::new(input0.variable()), gate, input0.is_inverted());
+                    mig.graph.update_edge(NodeIndex::new(input1.variable()), gate, input1.is_inverted());
                     mig.graph.update_edge(mig.zero, gate, false);
                 },
             }
@@ -71,19 +80,19 @@ impl Mig {
         for edge in self.graph.edge_indices() {
             let (to, from) = self.graph.edge_endpoints(edge).unwrap();
 
-            match self.graph[from] {
+            match self.graph[to] {
                 MigNode::Input(index) => {
-                    print!("{} -> {}", from.index(), to.index());
+                    print!("{} -> {}", to.index(), from.index());
                 },
                 MigNode::Output(index) => {
-                    print!("{} -> {}", from.index(), to.index());
+                    print!("{} -> {}", to.index(), from.index());
                 },
                 MigNode::Zero => {
-                    println!("z{} [label=\"Zero\"];", from.index());
+                    println!("z{} [label=\"\", shape=point];", from.index());
                     print!("z{} -> {0}", from.index());
                 },
                 MigNode::Majority => {
-                    print!("{} -> {}", from.index(), to.index());
+                    print!("{} -> {}", to.index(), from.index());
                 },
             }
 
