@@ -151,3 +151,47 @@ impl Mig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn try_unwrap_majority() {
+        let mut mig = Mig::default();
+
+        let node_input0 = mig.graph.add_node(MigNode::Input(0));
+        let node_input1 = mig.graph.add_node(MigNode::Input(1));
+        let node_input2 = mig.graph.add_node(MigNode::Input(2));
+        let node_majority = mig.graph.add_node(MigNode::Majority);
+
+        let edge_input0 = mig.graph.add_edge(node_input0, node_majority, false);
+        let edge_input1 = mig.graph.add_edge(node_input1, node_majority, false);
+        let edge_input2 = mig.graph.add_edge(node_input2, node_majority, false);
+
+        // This is the best way I've got for order-independent comparison of
+        // tuples
+        let edges = mig
+            .try_unwrap_majority(node_majority)
+            .expect("try_unwrap_majority should return Some(_) for a majority gate");
+        let edges = [edges.0, edges.1, edges.2];
+
+        assert!(edges.contains(&edge_input0));
+        assert!(edges.contains(&edge_input1));
+        assert!(edges.contains(&edge_input2));
+    }
+
+    #[test]
+    fn try_unwrap_majority_not_a_majority() {
+        let mut mig = Mig::default();
+
+        let node_input = mig.graph.add_node(MigNode::Input(0));
+        let node_output = mig.graph.add_node(MigNode::Output(1));
+        let node_zero = mig.graph.add_node(MigNode::Zero);
+
+        assert_eq!(mig.try_unwrap_majority(node_input), None);
+        assert_eq!(mig.try_unwrap_majority(node_output), None);
+        assert_eq!(mig.try_unwrap_majority(node_zero), None);
+    }
+
+}

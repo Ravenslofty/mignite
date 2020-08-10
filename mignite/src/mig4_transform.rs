@@ -252,3 +252,192 @@ impl mig4::Mig {
 
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transform_majority_same() {
+        let mut mig = mig4::Mig::default();
+
+        let node_input0 = mig.graph_mut().add_node(MigNode::Input(0));
+        let node_input1 = mig.graph_mut().add_node(MigNode::Input(1));
+        let node_output = mig.graph_mut().add_node(MigNode::Output(2));
+        let node_majority = mig.graph_mut().add_node(MigNode::Majority);
+
+        mig.graph_mut().add_edge(node_input0, node_majority, false);
+        mig.graph_mut().add_edge(node_input0, node_majority, false);
+        mig.graph_mut().add_edge(node_input1, node_majority, false);
+        mig.graph_mut().add_edge(node_majority, node_output, false);
+
+        mig.transform_majority(node_majority);
+
+        let new_edge = mig
+            .graph()
+            .find_edge(node_input0, node_output)
+            .expect("transformation to add edge from input 0 to output");
+        assert_eq!(mig.graph()[new_edge], false);
+    }
+
+    #[test]
+    fn transform_majority_same_input_inverter() {
+        let mut mig = mig4::Mig::default();
+
+        let node_input0 = mig.graph_mut().add_node(MigNode::Input(0));
+        let node_input1 = mig.graph_mut().add_node(MigNode::Input(1));
+        let node_output = mig.graph_mut().add_node(MigNode::Output(2));
+        let node_majority = mig.graph_mut().add_node(MigNode::Majority);
+
+        mig.graph_mut().add_edge(node_input0, node_majority, true);
+        mig.graph_mut().add_edge(node_input0, node_majority, true);
+        mig.graph_mut().add_edge(node_input1, node_majority, false);
+        mig.graph_mut().add_edge(node_majority, node_output, false);
+
+        mig.transform_majority(node_majority);
+
+        let new_edge = mig
+            .graph()
+            .find_edge(node_input0, node_output)
+            .expect("transformation to add edge from input 0 to output");
+        assert_eq!(mig.graph()[new_edge], true);
+    }
+
+    #[test]
+    fn transform_majority_same_output_inverter() {
+        let mut mig = mig4::Mig::default();
+
+        let node_input0 = mig.graph_mut().add_node(MigNode::Input(0));
+        let node_input1 = mig.graph_mut().add_node(MigNode::Input(1));
+        let node_output = mig.graph_mut().add_node(MigNode::Output(2));
+        let node_majority = mig.graph_mut().add_node(MigNode::Majority);
+
+        mig.graph_mut().add_edge(node_input0, node_majority, false);
+        mig.graph_mut().add_edge(node_input0, node_majority, false);
+        mig.graph_mut().add_edge(node_input1, node_majority, false);
+        mig.graph_mut().add_edge(node_majority, node_output, true);
+
+        mig.transform_majority(node_majority);
+
+        let new_edge = mig
+            .graph()
+            .find_edge(node_input0, node_output)
+            .expect("transformation to add edge from input 0 to output");
+        assert_eq!(mig.graph()[new_edge], true);
+    }
+
+    #[test]
+    fn transform_majority_same_input_and_output_inverter() {
+        let mut mig = mig4::Mig::default();
+
+        let node_input0 = mig.graph_mut().add_node(MigNode::Input(0));
+        let node_input1 = mig.graph_mut().add_node(MigNode::Input(1));
+        let node_output = mig.graph_mut().add_node(MigNode::Output(2));
+        let node_majority = mig.graph_mut().add_node(MigNode::Majority);
+
+        mig.graph_mut().add_edge(node_input0, node_majority, true);
+        mig.graph_mut().add_edge(node_input0, node_majority, true);
+        mig.graph_mut().add_edge(node_input1, node_majority, false);
+        mig.graph_mut().add_edge(node_majority, node_output, true);
+
+        mig.transform_majority(node_majority);
+
+        let new_edge = mig
+            .graph()
+            .find_edge(node_input0, node_output)
+            .expect("transformation to add edge from input 0 to output");
+        assert_eq!(mig.graph()[new_edge], false);
+    }
+
+    #[test]
+    fn transform_majority_different() {
+        let mut mig = mig4::Mig::default();
+
+        let node_input0 = mig.graph_mut().add_node(MigNode::Input(0));
+        let node_input1 = mig.graph_mut().add_node(MigNode::Input(1));
+        let node_output = mig.graph_mut().add_node(MigNode::Output(2));
+        let node_majority = mig.graph_mut().add_node(MigNode::Majority);
+
+        mig.graph_mut().add_edge(node_input0, node_majority, false);
+        mig.graph_mut().add_edge(node_input0, node_majority, true);
+        mig.graph_mut().add_edge(node_input1, node_majority, false);
+        mig.graph_mut().add_edge(node_majority, node_output, false);
+
+        mig.transform_majority(node_majority);
+
+        let new_edge = mig
+            .graph()
+            .find_edge(node_input1, node_output)
+            .expect("transformation to add edge from input 1 to output");
+        assert_eq!(mig.graph()[new_edge], false);
+    }
+
+    #[test]
+    fn transform_majority_different_input_inverter() {
+        let mut mig = mig4::Mig::default();
+
+        let node_input0 = mig.graph_mut().add_node(MigNode::Input(0));
+        let node_input1 = mig.graph_mut().add_node(MigNode::Input(1));
+        let node_output = mig.graph_mut().add_node(MigNode::Output(2));
+        let node_majority = mig.graph_mut().add_node(MigNode::Majority);
+
+        mig.graph_mut().add_edge(node_input0, node_majority, false);
+        mig.graph_mut().add_edge(node_input0, node_majority, true);
+        mig.graph_mut().add_edge(node_input1, node_majority, true);
+        mig.graph_mut().add_edge(node_majority, node_output, false);
+
+        mig.transform_majority(node_majority);
+
+        let new_edge = mig
+            .graph()
+            .find_edge(node_input1, node_output)
+            .expect("transformation to add edge from input 1 to output");
+        assert_eq!(mig.graph()[new_edge], true);
+    }
+
+    #[test]
+    fn transform_majority_different_output_inverter() {
+        let mut mig = mig4::Mig::default();
+
+        let node_input0 = mig.graph_mut().add_node(MigNode::Input(0));
+        let node_input1 = mig.graph_mut().add_node(MigNode::Input(1));
+        let node_output = mig.graph_mut().add_node(MigNode::Output(2));
+        let node_majority = mig.graph_mut().add_node(MigNode::Majority);
+
+        mig.graph_mut().add_edge(node_input0, node_majority, false);
+        mig.graph_mut().add_edge(node_input0, node_majority, true);
+        mig.graph_mut().add_edge(node_input1, node_majority, false);
+        mig.graph_mut().add_edge(node_majority, node_output, true);
+
+        mig.transform_majority(node_majority);
+
+        let new_edge = mig
+            .graph()
+            .find_edge(node_input1, node_output)
+            .expect("transformation to add edge from input 1 to output");
+        assert_eq!(mig.graph()[new_edge], true);
+    }
+
+    #[test]
+    fn transform_majority_different_input_and_output_inverter() {
+        let mut mig = mig4::Mig::default();
+
+        let node_input0 = mig.graph_mut().add_node(MigNode::Input(0));
+        let node_input1 = mig.graph_mut().add_node(MigNode::Input(1));
+        let node_output = mig.graph_mut().add_node(MigNode::Output(2));
+        let node_majority = mig.graph_mut().add_node(MigNode::Majority);
+
+        mig.graph_mut().add_edge(node_input0, node_majority, false);
+        mig.graph_mut().add_edge(node_input0, node_majority, true);
+        mig.graph_mut().add_edge(node_input1, node_majority, true);
+        mig.graph_mut().add_edge(node_majority, node_output, true);
+
+        mig.transform_majority(node_majority);
+
+        let new_edge = mig
+            .graph()
+            .find_edge(node_input1, node_output)
+            .expect("transformation to add edge from input 1 to output");
+        assert_eq!(mig.graph()[new_edge], false);
+    }
+}
