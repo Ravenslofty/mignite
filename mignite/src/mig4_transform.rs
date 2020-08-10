@@ -136,7 +136,7 @@ impl mig4::Mig {
             self.graph_mut().add_edge(y1, node, y1_is_inverted ^ b_is_inverted);
             self.graph_mut().add_edge(d, node, false);
 
-            eprintln!("{}: M(M({}, {}, {}), M({1}, {2}, {}), {}) => M({1}, {2}, M({3}, {4}, {5})) (Ω.D)", node.index(), x1.index(), x2.index(), u.index(), v.index(), z.index());
+            eprintln!("{}: M(M({}, {}, {}), M({}, {}, {}), {}) => M({1}, {2}, M({3}, {6}, {7})) (Ω.D)", node.index(), x1.index(), y1.index(), u.index(), x2.index(), y2.index(), v.index(), z.index());
 
             Some(())
         };
