@@ -40,14 +40,14 @@ impl mig4::Mig {
     }
 
     fn transform_majority(&mut self, node: NodeIndex) -> Option<()> {
-        let mut majority = |mig: &mut Self, x_edge: EdgeIndex, y_edge: EdgeIndex, z_edge: EdgeIndex, x: NodeIndex, y: NodeIndex, z: NodeIndex, x_is_inverted: bool, y_is_inverted: bool| {
+        let mut majority = |mig: &mut Self, x_edge: EdgeIndex, y_edge: EdgeIndex, z_edge: EdgeIndex, x: NodeIndex, y: NodeIndex, z: NodeIndex, x_is_inverted: bool, y_is_inverted: bool, z_is_inverted: bool| {
             if x == y {
-                if !x_is_inverted && !y_is_inverted {
+                if x_is_inverted == y_is_inverted {
                     // M(x, x, y) => x
                     let mut outputs = mig.graph().neighbors_directed(node, Outgoing).detach();
                     while let Some((edge, output)) = outputs.next(mig.graph()) {
                         let inverted = mig.graph_mut().remove_edge(edge).unwrap();
-                        mig.graph_mut().add_edge(x, output, inverted);
+                        mig.graph_mut().add_edge(x, output, x_is_inverted ^ inverted);
                     }
                     mig.graph_mut().remove_node(node);
                     eprintln!("{}: M({}, {}, {}) => {1} (Ω.M)", node.index(), x.index(), y.index(), z.index());
@@ -57,7 +57,7 @@ impl mig4::Mig {
                     let mut outputs = mig.graph().neighbors_directed(node, Outgoing).detach();
                     while let Some((edge, output)) = outputs.next(mig.graph()) {
                         let inverted = mig.graph_mut().remove_edge(edge).unwrap();
-                        mig.graph_mut().add_edge(z, output, inverted);
+                        mig.graph_mut().add_edge(z, output, inverted ^ z_is_inverted);
                     }
                     mig.graph_mut().remove_node(node);
                     eprintln!("{}: M({}, {}', {}) => {3} (Ω.M')", node.index(), x.index(), y.index(), z.index());
@@ -75,9 +75,9 @@ impl mig4::Mig {
         let y_is_inverted = *self.graph().edge_weight(y_edge).expect("edge from y to node has no weight");
         let z_is_inverted = *self.graph().edge_weight(z_edge).expect("edge from z to node has no weight");
 
-        majority(self, x_edge, y_edge, z_edge, x, y, z, x_is_inverted, y_is_inverted)
-        .or_else(|| majority(self, y_edge, z_edge, x_edge, y, z, x, y_is_inverted, z_is_inverted))
-        .or_else(|| majority(self, z_edge, x_edge, y_edge, z, x, y, z_is_inverted, x_is_inverted))
+        majority(self, x_edge, y_edge, z_edge, x, y, z, x_is_inverted, y_is_inverted, z_is_inverted)
+        .or_else(|| majority(self, y_edge, z_edge, x_edge, y, z, x, y_is_inverted, z_is_inverted, x_is_inverted))
+        .or_else(|| majority(self, z_edge, x_edge, y_edge, z, x, y, z_is_inverted, x_is_inverted, y_is_inverted))
     }
 
     /// Transform `M(x, y, M(u, v, z))` into `M(M(x, y, u), M(x, y, v), z)`.
@@ -271,7 +271,7 @@ mod tests {
         mig.graph_mut().add_edge(node_input1, node_majority, false);
         mig.graph_mut().add_edge(node_majority, node_output, false);
 
-        mig.transform_majority(node_majority);
+        mig.transform_majority(node_majority).expect("transformation to succeed");
 
         let new_edge = mig
             .graph()
@@ -294,7 +294,7 @@ mod tests {
         mig.graph_mut().add_edge(node_input1, node_majority, false);
         mig.graph_mut().add_edge(node_majority, node_output, false);
 
-        mig.transform_majority(node_majority);
+        mig.transform_majority(node_majority).expect("transformation to succeed");
 
         let new_edge = mig
             .graph()
@@ -317,7 +317,7 @@ mod tests {
         mig.graph_mut().add_edge(node_input1, node_majority, false);
         mig.graph_mut().add_edge(node_majority, node_output, true);
 
-        mig.transform_majority(node_majority);
+        mig.transform_majority(node_majority).expect("transformation to succeed");
 
         let new_edge = mig
             .graph()
@@ -340,7 +340,7 @@ mod tests {
         mig.graph_mut().add_edge(node_input1, node_majority, false);
         mig.graph_mut().add_edge(node_majority, node_output, true);
 
-        mig.transform_majority(node_majority);
+        mig.transform_majority(node_majority).expect("transformation to succeed");
 
         let new_edge = mig
             .graph()
@@ -363,7 +363,7 @@ mod tests {
         mig.graph_mut().add_edge(node_input1, node_majority, false);
         mig.graph_mut().add_edge(node_majority, node_output, false);
 
-        mig.transform_majority(node_majority);
+        mig.transform_majority(node_majority).expect("transformation to succeed");
 
         let new_edge = mig
             .graph()
@@ -386,7 +386,7 @@ mod tests {
         mig.graph_mut().add_edge(node_input1, node_majority, true);
         mig.graph_mut().add_edge(node_majority, node_output, false);
 
-        mig.transform_majority(node_majority);
+        mig.transform_majority(node_majority).expect("transformation to succeed");
 
         let new_edge = mig
             .graph()
@@ -409,7 +409,7 @@ mod tests {
         mig.graph_mut().add_edge(node_input1, node_majority, false);
         mig.graph_mut().add_edge(node_majority, node_output, true);
 
-        mig.transform_majority(node_majority);
+        mig.transform_majority(node_majority).expect("transformation to succeed");
 
         let new_edge = mig
             .graph()
@@ -432,7 +432,7 @@ mod tests {
         mig.graph_mut().add_edge(node_input1, node_majority, true);
         mig.graph_mut().add_edge(node_majority, node_output, true);
 
-        mig.transform_majority(node_majority);
+        mig.transform_majority(node_majority).expect("transformation to succeed");
 
         let new_edge = mig
             .graph()
