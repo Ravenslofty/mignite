@@ -88,8 +88,28 @@ impl mig4::Mig {
         let (y, _) = self.graph().edge_endpoints(y_edge).unwrap();
         let (z, _) = self.graph().edge_endpoints(z_edge).unwrap();
 
+        type Input = (NodeIndex, bool);
+        let classify_inputs = |i1: Input, i2: Input, i3: Input, i4: Input, i5: Input, i6: Input| {
+            let all = vec![i1, i2, i3, i4, i5, i6];
+            let mut shared = std::collections::HashSet::new();
+            let mut unique = std::collections::HashSet::new();
+
+            for input in all.iter() {
+                let count = all.iter().filter(|input2| *input2 == input).count();
+
+                if count == 1 {
+                    unique.insert(*input);
+                } else {
+                    shared.insert(*input);
+                }
+            }
+
+            (shared, unique)
+        };
+
+
         let mut distributivity = |b_edge: EdgeIndex, c_edge: EdgeIndex, z_edge: EdgeIndex, b: NodeIndex, c: NodeIndex, z: NodeIndex| {
-            //        node
+            //        j
             //    /    |    \
             //   b     c     z
             // / | \ / | \
@@ -118,25 +138,42 @@ impl mig4::Mig {
             let y2_is_inverted = self.graph()[y2_edge];
             let v_is_inverted = self.graph()[v_edge];
 
-            if x1 != x2 || y1 != y2 || (x1_is_inverted ^ b_is_inverted) != (x2_is_inverted ^ c_is_inverted) || (y1_is_inverted ^ b_is_inverted) != (y2_is_inverted ^ c_is_inverted) {
+            let (shared, unique) = classify_inputs((x1, x1_is_inverted ^ b_is_inverted), (y1, y1_is_inverted ^ b_is_inverted), (u, u_is_inverted ^ b_is_inverted), (x2, x2_is_inverted ^ c_is_inverted), (y2, y2_is_inverted ^ c_is_inverted), (v, v_is_inverted ^ c_is_inverted));
+
+            if shared.len() != 2 || unique.len() != 2 {
                 return None;
             }
 
+            let mut shared_iter = shared.iter();
+            let mut unique_iter = unique.iter();
+
             let d = self.graph_mut().add_node(MigNode::Majority);
 
-            self.graph_mut().add_edge(u, d, u_is_inverted ^ b_is_inverted);
-            self.graph_mut().add_edge(v, d, v_is_inverted ^ c_is_inverted);
+            let nx1 = shared_iter.next().unwrap();
+            let ny1 = shared_iter.next().unwrap();
+            let nu = unique_iter.next().unwrap();
+            let nv = unique_iter.next().unwrap();
+            self.graph_mut().add_edge(nu.0, d, nu.1);
+            self.graph_mut().add_edge(nv.0, d, nv.1);
             self.graph_mut().add_edge(z, d, z_is_inverted);
 
             self.graph_mut().remove_edge(b_edge);
             self.graph_mut().remove_edge(c_edge);
             self.graph_mut().remove_edge(z_edge);
+            self.graph_mut().remove_edge(x1_edge);
+            self.graph_mut().remove_edge(y1_edge);
+            self.graph_mut().remove_edge(u_edge);
+            self.graph_mut().remove_edge(x2_edge);
+            self.graph_mut().remove_edge(y2_edge);
+            self.graph_mut().remove_edge(v_edge);
 
-            self.graph_mut().add_edge(x1, node, x1_is_inverted ^ b_is_inverted);
-            self.graph_mut().add_edge(y1, node, y1_is_inverted ^ b_is_inverted);
+            self.graph_mut().add_edge(nx1.0, node, nx1.1);
+            self.graph_mut().add_edge(ny1.0, node, ny1.1);
             self.graph_mut().add_edge(d, node, false);
 
-            eprintln!("{}: M(M({}, {}, {}), M({}, {}, {}), {}) => M({1}, {2}, M({3}, {6}, {7})) (Ω.D)", node.index(), x1.index(), y1.index(), u.index(), x2.index(), y2.index(), v.index(), z.index());
+            self.graph_mut().remove_node(b);
+
+            eprintln!("{}: M(M({}, {}, {}), M({}, {}, {}), {}) => M({}, {}, M({}, {}, {})) (Ω.D)", node.index(), x1.index(), y1.index(), u.index(), x2.index(), y2.index(), v.index(), z.index(), nx1.0.index(), ny1.0.index(), nu.0.index(), nv.0.index(), z.index());
 
             Some(())
         };
