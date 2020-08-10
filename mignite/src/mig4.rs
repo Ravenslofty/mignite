@@ -1,5 +1,6 @@
 use petgraph::{stable_graph::EdgeReference, prelude::*, visit::EdgeRef};
 
+#[derive(PartialEq)]
 pub enum MigNode {
     Input(u32),
     Output(u32),
@@ -142,11 +143,16 @@ impl Mig {
             MigNode::Zero => None,
             MigNode::Majority => {
                 let mut iter = self.graph.edges_directed(node, Incoming);
-                if let (Some(x), Some(y), Some(z)) = (iter.next(), iter.next(), iter.next()) {
-                    assert_eq!(iter.next(), None, "majority gate with more than three inputs");
-                    return Some((x.id(), y.id(), z.id()))
+                match (iter.next(), iter.next(), iter.next()) {
+                    (Some(x), Some(y), Some(z)) => {
+                        assert_eq!(iter.next(), None, "majority gate with more than three inputs");
+                        Some((x.id(), y.id(), z.id()))
+                    },
+                    (Some(x), Some(y), None) => panic!("majority gate {} has two inputs: {} and {}", node.index(), x.id().index(), y.id().index()),
+                    (Some(x), None, None) => panic!("majority gate {} has one input: {}", node.index(), x.id().index()),
+                    (None, None, None) => panic!("majority gate {} has zero inputs", node.index()),
+                    (_, _, _) => unreachable!()
                 }
-                panic!("majority gate with less than three inputs");
             }
         }
     }

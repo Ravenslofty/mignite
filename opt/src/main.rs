@@ -9,7 +9,7 @@ fn main() {
 
     mig.optimise_area();
 
-    //mig.print_graph();
+    mig.print_graph();
     //mig.optimise_size(100);
 
     //let count = mig.count_nodes();
