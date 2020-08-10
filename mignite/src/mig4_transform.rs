@@ -57,7 +57,7 @@ impl mig4::Mig {
                     let mut outputs = mig.graph().neighbors_directed(node, Outgoing).detach();
                     while let Some((edge, output)) = outputs.next(mig.graph()) {
                         let inverted = mig.graph_mut().remove_edge(edge).unwrap();
-                        mig.graph_mut().add_edge(z, output, inverted ^ z_is_inverted);
+                        mig.graph_mut().add_edge(z, output,  z_is_inverted ^ inverted);
                     }
                     mig.graph_mut().remove_node(node);
                     eprintln!("{}: M({}, {}', {}) => {3} (Ω.M')", node.index(), x.index(), y.index(), z.index());
@@ -80,57 +80,71 @@ impl mig4::Mig {
         .or_else(|| majority(self, z_edge, x_edge, y_edge, z, x, y, z_is_inverted, x_is_inverted, y_is_inverted))
     }
 
-    /// Transform `M(x, y, M(u, v, z))` into `M(M(x, y, u), M(x, y, v), z)`.
-    /*#[allow(clippy::many_single_char_names)]
+    /// Transform `M(M(x, y, u), M(x, y, v), z)` into `M(x, y, M(u, v, z))`.
+    #[allow(clippy::many_single_char_names)]
     pub fn transform_distributivity(&mut self, node: NodeIndex) -> Option<()> {
         let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node)?;
         let (x, _) = self.graph().edge_endpoints(x_edge).unwrap();
         let (y, _) = self.graph().edge_endpoints(y_edge).unwrap();
         let (z, _) = self.graph().edge_endpoints(z_edge).unwrap();
 
-        let mut distributivity = |x_edge: EdgeIndex, y_edge: EdgeIndex, b_edge: EdgeIndex, x: NodeIndex, y: NodeIndex, b: NodeIndex| {
-            //    a
-            //  / | \
-            // x  y  b
-            //     / | \
-            //    u  v  z
-            let (u, v, z) = self.try_unwrap_majority(b)?;
+        let mut distributivity = |b_edge: EdgeIndex, c_edge: EdgeIndex, z_edge: EdgeIndex, b: NodeIndex, c: NodeIndex, z: NodeIndex| {
+            //        node
+            //    /    |    \
+            //   b     c     z
+            // / | \ / | \
+            // x y u x y v
 
-            let x_to_node_inverted = *self.graph().edge_weight(x_edge).unwrap();
-            let y_to_node_inverted = *self.graph().edge_weight(y_edge).unwrap();
-            let b_to_node_inverted = *self.graph().edge_weight(b_edge).unwrap();
+            let b_is_inverted = self.graph()[b_edge];
+            let c_is_inverted = self.graph()[c_edge];
+            let z_is_inverted = self.graph()[z_edge];
 
-            if y_to_node_inverted || b_to_node_inverted {
+            let (x1_edge, y1_edge, u_edge) = self.try_unwrap_majority(b)?;
+            let (x2_edge, y2_edge, v_edge) = self.try_unwrap_majority(c)?;
+
+            let (x1, _) = self.graph().edge_endpoints(x1_edge).unwrap();
+            let (y1, _) = self.graph().edge_endpoints(y1_edge).unwrap();
+            let (u, _) = self.graph().edge_endpoints(u_edge).unwrap();
+
+            let x1_is_inverted = self.graph()[x1_edge];
+            let y1_is_inverted = self.graph()[y1_edge];
+            let u_is_inverted = self.graph()[u_edge];
+
+            let (x2, _) = self.graph().edge_endpoints(x2_edge).unwrap();
+            let (y2, _) = self.graph().edge_endpoints(y2_edge).unwrap();
+            let (v, _) = self.graph().edge_endpoints(v_edge).unwrap();
+
+            let x2_is_inverted = self.graph()[x2_edge];
+            let y2_is_inverted = self.graph()[y2_edge];
+            let v_is_inverted = self.graph()[v_edge];
+
+            if x1 != x2 || y1 != y2 || (x1_is_inverted ^ b_is_inverted) != (x2_is_inverted ^ c_is_inverted) || (y1_is_inverted ^ b_is_inverted) != (y2_is_inverted ^ c_is_inverted) {
                 return None;
             }
 
-            let c = self.graph_mut().add_node(MigNode::Majority);
-            self.graph_mut().add_edge(x, c, false);
-            self.graph_mut().update_edge(y, c, false);
-            self.graph_mut().update_edge(u, c, false);
-
             let d = self.graph_mut().add_node(MigNode::Majority);
-            self.graph_mut().update_edge(x, d, false);
-            self.graph_mut().update_edge(y, d, false);
-            self.graph_mut().update_edge(v, d, false);
 
-            self.graph_mut().remove_edge(x_to_node).unwrap();
-            self.graph_mut().remove_edge(y_to_node).unwrap();
-            self.graph_mut().remove_edge(b_to_node).unwrap();
+            self.graph_mut().add_edge(u, d, u_is_inverted ^ b_is_inverted);
+            self.graph_mut().add_edge(v, d, v_is_inverted ^ c_is_inverted);
+            self.graph_mut().add_edge(z, d, z_is_inverted);
 
-            self.graph_mut().update_edge(node, c, x_to_node_inverted);
-            self.graph_mut().update_edge(node, d, y_to_node_inverted);
-            self.graph_mut().update_edge(node, z, b_to_node_inverted);
+            self.graph_mut().remove_edge(b_edge);
+            self.graph_mut().remove_edge(c_edge);
+            self.graph_mut().remove_edge(z_edge);
 
-            eprintln!("{}: M({}, {}, M({}, {}, {})) => (distributivity)", node.index(), x.index(), y.index(), u.index(), v.index(), z.index());
+            self.graph_mut().add_edge(x1, node, x1_is_inverted ^ b_is_inverted);
+            self.graph_mut().add_edge(y1, node, y1_is_inverted ^ b_is_inverted);
+            self.graph_mut().add_edge(d, node, false);
+
+            eprintln!("{}: M(M({}, {}, {}), M({1}, {2}, {}), {}) => M({1}, {2}, M({3}, {4}, {5})) (Ω.D)", node.index(), x1.index(), x2.index(), u.index(), v.index(), z.index());
 
             Some(())
         };
 
-        distributivity(x, y, z)
-        .or_else(|| distributivity(y, z, x))
-        .or_else(|| distributivity(z, x, y))
-    }*/
+        distributivity(x_edge, y_edge, z_edge, x, y, z)
+        .or_else(|| distributivity(y_edge, z_edge, x_edge, y, z, x))
+        .or_else(|| distributivity(z_edge, x_edge, y_edge, z, x, y))
+    }
 
     fn transform_relevance(&mut self, node: NodeIndex) -> Option<()> {
         let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node)?;
@@ -231,7 +245,7 @@ impl mig4::Mig {
             for input in inputs.clone() {
                 dfs.move_to(input);
                 while let Some(node) = dfs.next(self.graph()) {
-                    self.transform_majority(node);
+                    self.transform_distributivity(node);
                 }
             }
 
