@@ -1,4 +1,4 @@
-use petgraph::prelude::*;
+use petgraph::{stable_graph::EdgeReference, prelude::*, visit::EdgeRef};
 
 pub enum MigNode {
     Input(u32),
@@ -50,9 +50,6 @@ impl Mig {
                     let i0 = mig.graph.add_edge(NodeIndex::new(input0.variable()), gate, input0.is_inverted());
                     let i1 = mig.graph.add_edge(NodeIndex::new(input1.variable()), gate, input1.is_inverted());
                     let i2 = mig.graph.add_edge(mig.zero, gate, false);
-
-                    eprintln!("{} = {}{} AND {}{}", output.variable(), input0.variable(), if input0.is_inverted() { "'" } else { "" }, input1.variable(), if input1.is_inverted() { "'" } else { "" });
-                    eprintln!("{} {} {}", i0.index(), i1.index(), i2.index());
                 },
             }
         }
@@ -73,10 +70,10 @@ impl Mig {
                 },
                 MigNode::Zero => {},
                 MigNode::Majority => {
-                    let (x, y, z) = self.try_unwrap_majority(node).expect("majority node with less than three inputs");
-                    let x_edge = self.graph().find_edge(x, node).expect("no edge from x to node, but x is an input of node");
-                    let y_edge = self.graph().find_edge(y, node).expect("no edge from y to node, but y is an input of node");
-                    let z_edge = self.graph().find_edge(z, node).expect("no edge from z to node, but z is an input of node");
+                    let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node).expect("majority node with less than three inputs");
+                    let (x, _) = self.graph().edge_endpoints(x_edge).unwrap();
+                    let (y, _) = self.graph().edge_endpoints(y_edge).unwrap();
+                    let (z, _) = self.graph().edge_endpoints(z_edge).unwrap();
                     let x_is_inverted = *self.graph().edge_weight(x_edge).expect("edge from x to node has no weight");
                     let y_is_inverted = *self.graph().edge_weight(y_edge).expect("edge from y to node has no weight");
                     let z_is_inverted = *self.graph().edge_weight(z_edge).expect("edge from z to node has no weight");
@@ -138,12 +135,19 @@ impl Mig {
         &mut self.graph
     }
 
-    pub fn try_unwrap_majority(&self, node: NodeIndex) -> Option<(NodeIndex, NodeIndex, NodeIndex)> {
-        let mut iter = self.graph.neighbors_directed(node, Incoming);
-        if let (Some(x), Some(y), Some(z)) = (iter.next(), iter.next(), iter.next()) {
-            assert_eq!(iter.next(), None);
-            return Some((x, y, z))
+    pub fn try_unwrap_majority(&self, node: NodeIndex) -> Option<(EdgeIndex, EdgeIndex, EdgeIndex)> {
+        match self.graph[node] {
+            MigNode::Input(_) => None,
+            MigNode::Output(_) => None,
+            MigNode::Zero => None,
+            MigNode::Majority => {
+                let mut iter = self.graph.edges_directed(node, Incoming);
+                if let (Some(x), Some(y), Some(z)) = (iter.next(), iter.next(), iter.next()) {
+                    assert_eq!(iter.next(), None, "majority gate with more than three inputs");
+                    return Some((x.id(), y.id(), z.id()))
+                }
+                panic!("majority gate with less than three inputs");
+            }
         }
-        None
     }
 }

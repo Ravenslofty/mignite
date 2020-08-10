@@ -4,42 +4,11 @@ use petgraph::prelude::*;
 use mig4::MigNode;
 
 impl mig4::Mig {
-    fn substitute(&mut self, node: NodeIndex, from: NodeIndex, to: NodeIndex, invert: bool) -> Option<()> {
-        let mut dfs = DfsPostOrder::new(self.graph(), node);
-        let mut did_something = false;
-        while let Some(node) = dfs.next(self.graph()) {
-            if let Some((x, y, z)) = self.try_unwrap_majority(node) {
-                if x == from {
-                    let edge = self.graph().find_edge(x, node).unwrap();
-                    let inverted = self.graph_mut().remove_edge(edge).unwrap();
-                    self.graph_mut().add_edge(to, node, if invert { !inverted } else { inverted });
-                    did_something = true;
-                }
-
-                if y == from {
-                    let edge = self.graph().find_edge(y, node).unwrap();
-                    let inverted = self.graph_mut().remove_edge(edge).unwrap();
-                    self.graph_mut().add_edge(to, node, if invert { !inverted } else { inverted });
-                    did_something = true;
-                }
-
-                if z == from {
-                    let edge = self.graph().find_edge(z, node).unwrap();
-                    let inverted = self.graph_mut().remove_edge(edge).unwrap();
-                    self.graph_mut().add_edge(to, node, if invert { !inverted } else { inverted });
-                    did_something = true;
-                }
-            }
-        }
-
-        if did_something { Some(()) } else { None }
-    }
-
     fn transform_inverters(&mut self, node: NodeIndex) -> Option<()> {
-        let (x, y, z) = self.try_unwrap_majority(node)?;
-        let x_edge = self.graph().find_edge(x, node).expect("no edge from x to node, but x is an input of node");
-        let y_edge = self.graph().find_edge(y, node).expect("no edge from y to node, but y is an input of node");
-        let z_edge = self.graph().find_edge(z, node).expect("no edge from z to node, but z is an input of node");
+        let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node)?;
+        let (x, _) = self.graph().edge_endpoints(x_edge).unwrap();
+        let (y, _) = self.graph().edge_endpoints(y_edge).unwrap();
+        let (z, _) = self.graph().edge_endpoints(z_edge).unwrap();
         let x_is_inverted = *self.graph().edge_weight(x_edge).expect("edge from x to node has no weight");
         let y_is_inverted = *self.graph().edge_weight(y_edge).expect("edge from y to node has no weight");
         let z_is_inverted = *self.graph().edge_weight(z_edge).expect("edge from z to node has no weight");
@@ -71,7 +40,7 @@ impl mig4::Mig {
     }
 
     fn transform_majority(&mut self, node: NodeIndex) -> Option<()> {
-        let mut majority = |mig: &mut Self, x: NodeIndex, y: NodeIndex, z: NodeIndex, x_is_inverted: bool, y_is_inverted: bool| {
+        let mut majority = |mig: &mut Self, x_edge: EdgeIndex, y_edge: EdgeIndex, z_edge: EdgeIndex, x: NodeIndex, y: NodeIndex, z: NodeIndex, x_is_inverted: bool, y_is_inverted: bool| {
             if x == y {
                 if !x_is_inverted && !y_is_inverted {
                     // M(x, x, y) => x
@@ -83,48 +52,43 @@ impl mig4::Mig {
                     mig.graph_mut().remove_node(node);
                     eprintln!("{}: M({}, {}, {}) => {1} (Ω.M)", node.index(), x.index(), y.index(), z.index());
                     return Some(());
-                } else { /*
+                } else {
                     // M(x, x', y) => y
-                    let mut outputs = self.graph().neighbors_directed(node, Outgoing).detach();
-                    while let Some((edge, output)) = outputs.next(self.graph()) {
-                        let inverted = self.graph_mut().remove_edge(edge).unwrap();
-                        self.graph_mut().add_edge(z, output, inverted);
+                    let mut outputs = mig.graph().neighbors_directed(node, Outgoing).detach();
+                    while let Some((edge, output)) = outputs.next(mig.graph()) {
+                        let inverted = mig.graph_mut().remove_edge(edge).unwrap();
+                        mig.graph_mut().add_edge(z, output, inverted);
                     }
-                    self.graph_mut().remove_node(node);
-                    eprintln!("{}: M({}, {}, {}) => {1} (Ω.M)", node.index(), x.index(), y.index(), z.index());
-                    return Some(());*/
+                    mig.graph_mut().remove_node(node);
+                    eprintln!("{}: M({}, {}', {}) => {3} (Ω.M')", node.index(), x.index(), y.index(), z.index());
+                    return Some(());
                 }
             }
             None
         };
 
-        let (x, y, z) = self.try_unwrap_majority(node)?;
-        let x_edge = self.graph().find_edge(x, node).expect("no edge from x to node, but x is an input of node");
-        let y_edge = self.graph().find_edge(y, node).expect("no edge from y to node, but y is an input of node");
-        let z_edge = self.graph().find_edge(z, node).expect("no edge from z to node, but z is an input of node");
+        let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node)?;
+        let (x, _) = self.graph().edge_endpoints(x_edge).unwrap();
+        let (y, _) = self.graph().edge_endpoints(y_edge).unwrap();
+        let (z, _) = self.graph().edge_endpoints(z_edge).unwrap();
         let x_is_inverted = *self.graph().edge_weight(x_edge).expect("edge from x to node has no weight");
         let y_is_inverted = *self.graph().edge_weight(y_edge).expect("edge from y to node has no weight");
         let z_is_inverted = *self.graph().edge_weight(z_edge).expect("edge from z to node has no weight");
 
-        if node == NodeIndex::new(31) {
-            dbg!(x_edge);
-            dbg!(y_edge);
-            dbg!(z_edge);
-            dbg!(x_is_inverted);
-            dbg!(y_is_inverted);
-            dbg!(z_is_inverted);
-        }
-
-        majority(self, x, y, z, x_is_inverted, y_is_inverted)
-        //.or_else(|| majority(y, z, x, y_is_inverted, z_is_inverted))
-        //.or_else(|| majority(z, x, y, z_is_inverted, x_is_inverted))
+        majority(self, x_edge, y_edge, z_edge, x, y, z, x_is_inverted, y_is_inverted)
+        .or_else(|| majority(self, y_edge, z_edge, x_edge, y, z, x, y_is_inverted, z_is_inverted))
+        .or_else(|| majority(self, z_edge, x_edge, y_edge, z, x, y, z_is_inverted, x_is_inverted))
     }
 
     /// Transform `M(x, y, M(u, v, z))` into `M(M(x, y, u), M(x, y, v), z)`.
     /*#[allow(clippy::many_single_char_names)]
     pub fn transform_distributivity(&mut self, node: NodeIndex) -> Option<()> {
-        let (x, y, z) = self.try_unwrap_majority(node)?;
-        let mut distributivity = |x: NodeIndex, y: NodeIndex, b: NodeIndex| {
+        let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node)?;
+        let (x, _) = self.graph().edge_endpoints(x_edge).unwrap();
+        let (y, _) = self.graph().edge_endpoints(y_edge).unwrap();
+        let (z, _) = self.graph().edge_endpoints(z_edge).unwrap();
+
+        let mut distributivity = |x_edge: EdgeIndex, y_edge: EdgeIndex, b_edge: EdgeIndex, x: NodeIndex, y: NodeIndex, b: NodeIndex| {
             //    a
             //  / | \
             // x  y  b
@@ -132,13 +96,9 @@ impl mig4::Mig {
             //    u  v  z
             let (u, v, z) = self.try_unwrap_majority(b)?;
 
-            let x_to_node = self.graph().find_edge(x, node).unwrap();
-            let y_to_node = self.graph().find_edge(y, node).unwrap();
-            let b_to_node = self.graph().find_edge(b, node).unwrap();
-
-            let x_to_node_inverted = *self.graph().edge_weight(x_to_node).unwrap();
-            let y_to_node_inverted = *self.graph().edge_weight(y_to_node).unwrap();
-            let b_to_node_inverted = *self.graph().edge_weight(b_to_node).unwrap();
+            let x_to_node_inverted = *self.graph().edge_weight(x_edge).unwrap();
+            let y_to_node_inverted = *self.graph().edge_weight(y_edge).unwrap();
+            let b_to_node_inverted = *self.graph().edge_weight(b_edge).unwrap();
 
             if y_to_node_inverted || b_to_node_inverted {
                 return None;
@@ -173,38 +133,43 @@ impl mig4::Mig {
     }*/
 
     fn transform_relevance(&mut self, node: NodeIndex) -> Option<()> {
-        let (x, y, z) = self.try_unwrap_majority(node)?;
-        let mut relevance = |x, y, z| {
+        let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node)?;
+        let (x, _) = self.graph().edge_endpoints(x_edge).unwrap();
+        let (y, _) = self.graph().edge_endpoints(y_edge).unwrap();
+        let (z, _) = self.graph().edge_endpoints(z_edge).unwrap();
 
-            let node_to_y = self.graph().find_edge(node, y).unwrap();
-            let y_is_inverted = *self.graph().edge_weight(node_to_y).unwrap();
+        let mut relevance = |x_edge: EdgeIndex, y_edge: EdgeIndex, z_edge: EdgeIndex, x: NodeIndex, y: NodeIndex, z: NodeIndex| {
+
+            let y_is_inverted = *self.graph().edge_weight(y_edge).unwrap();
 
             let mut dfs = DfsPostOrder::new(self.graph(), z);
             let mut did_something = false;
 
             while let Some(node) = dfs.next(self.graph()) {
-                if let Some((x2, y2, z2)) = self.try_unwrap_majority(node) { 
+                if let Some((x2_edge, y2_edge, z2_edge)) = self.try_unwrap_majority(node) {
+
+                    let (x2, _) = self.graph().edge_endpoints(x2_edge).unwrap();
+                    let (y2, _) = self.graph().edge_endpoints(y2_edge).unwrap();
+                    let (z2, _) = self.graph().edge_endpoints(z2_edge).unwrap();
+
                     if x2 == x {
-                        let edge = self.graph().find_edge(x2, node).unwrap();
-                        self.graph_mut().remove_edge(edge).unwrap();
+                        self.graph_mut().remove_edge(x2_edge).unwrap();
                         self.graph_mut().add_edge(y, node, !y_is_inverted);
-                        eprintln!("{}: replacing {} with {} (relevance)", node.index(), x2.index(), y.index());
+                        eprintln!("{}: replacing {} with {} (Ω.R)", node.index(), x2.index(), y.index());
                         did_something = true;
                     }
                     
                     if y2 == x {
-                        let edge = self.graph().find_edge(y2, node).unwrap();
-                        self.graph_mut().remove_edge(edge).unwrap();
+                        self.graph_mut().remove_edge(y2_edge).unwrap();
                         self.graph_mut().add_edge(y, node, !y_is_inverted);
-                        eprintln!("{}: replacing {} with {} (relevance)", node.index(), y2.index(), y.index());
+                        eprintln!("{}: replacing {} with {} (Ω.R)", node.index(), y2.index(), y.index());
                         did_something = true;
                     }
 
                     if z2 == x {
-                        let edge = self.graph().find_edge(z2, node).unwrap();
-                        self.graph_mut().remove_edge(edge).unwrap();
+                        self.graph_mut().remove_edge(z2_edge).unwrap();
                         self.graph_mut().add_edge(y, node, !y_is_inverted);
-                        eprintln!("{}: replacing {} with {} (relevance)", node.index(), z2.index(), y.index());
+                        eprintln!("{}: replacing {} with {} (Ω.R)", node.index(), z2.index(), y.index());
                         did_something = true;
                     }
                 }
@@ -213,9 +178,9 @@ impl mig4::Mig {
             if did_something { Some(()) } else { None }
         };
 
-        relevance(x, y, z);
-        relevance(y, z, x);
-        relevance(z, x, y)
+        relevance(x_edge, y_edge, z_edge, x, y, z);
+        relevance(y_edge, z_edge, x_edge, y, z, x);
+        relevance(z_edge, x_edge, y_edge, z, x, y)
     }
 
     pub fn cleanup_graph(&mut self) {
@@ -232,31 +197,49 @@ impl mig4::Mig {
                     did_something = true;
                 }
             }
+            eprintln!("GC: there are {} nodes and {} edges in the graph", self.graph().node_count(), self.graph().edge_count());
         }
     }
 
     pub fn optimise_area(&mut self) {
         // Clean up graph orphans.
-        //self.cleanup_graph();
+        self.cleanup_graph();
 
         // Find graph inputs.
         let inputs = self.graph().externals(Incoming).collect::<Vec<_>>();
 
-        // Explore tree.
-
-        //self.transform_relevance(input);
-    
-        for n in 0..1 {
+        // Explore tree.   
+        for n in 0..10 {
             eprintln!("{}:", n);
             let mut dfs = DfsPostOrder::empty(self.graph());
             for input in inputs.clone() {
                 dfs.move_to(input);
                 while let Some(node) = dfs.next(self.graph()) {
-                    //self.transform_inverters(node);
+                    self.transform_inverters(node);
                 }
             }
 
-            let mut dfs = DfsPostOrder::empty(self.graph());
+            let mut dfs = Dfs::empty(self.graph());
+            for input in inputs.clone() {
+                dfs.move_to(input);
+                while let Some(node) = dfs.next(self.graph()) {
+                    self.transform_majority(node);
+                }
+            }
+
+            let mut dfs = Dfs::empty(self.graph());
+            for input in inputs.clone() {
+                dfs.move_to(input);
+                while let Some(node) = dfs.next(self.graph()) {
+                    self.transform_majority(node);
+                }
+            }
+
+            for input in inputs.clone() {
+                self.transform_relevance(input);
+            }
+
+            let mut dfs = Dfs::empty(self.graph());
             for input in inputs.clone() {
                 dfs.move_to(input);
                 while let Some(node) = dfs.next(self.graph()) {
