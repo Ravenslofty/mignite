@@ -40,44 +40,42 @@ impl mig4::Mig {
     }
 
     fn transform_majority(&mut self, node: NodeIndex) -> Option<()> {
-        let mut majority = |mig: &mut Self, x_edge: EdgeIndex, y_edge: EdgeIndex, z_edge: EdgeIndex, x: NodeIndex, y: NodeIndex, z: NodeIndex, x_is_inverted: bool, y_is_inverted: bool, z_is_inverted: bool| {
+        let (x, y, z) = self.try_unwrap_majority(node)?;
+
+        let mut majority = |x_edge: EdgeIndex, y_edge: EdgeIndex, z_edge: EdgeIndex| {
+            let (x, _) = self.graph().edge_endpoints(x_edge).unwrap();
+            let (y, _) = self.graph().edge_endpoints(y_edge).unwrap();
+            let (z, _) = self.graph().edge_endpoints(z_edge).unwrap();
+            let x_is_inverted = self.graph()[x_edge];
+            let y_is_inverted = self.graph()[y_edge];
+            let z_is_inverted = self.graph()[z_edge];
+
             if x == y {
+                let mut outputs = self.graph().neighbors_directed(node, Outgoing).detach();
                 if x_is_inverted == y_is_inverted {
                     // M(x, x, y) => x
-                    let mut outputs = mig.graph().neighbors_directed(node, Outgoing).detach();
-                    while let Some((edge, output)) = outputs.next(mig.graph()) {
-                        let inverted = mig.graph_mut().remove_edge(edge).unwrap();
-                        mig.graph_mut().add_edge(x, output, x_is_inverted ^ inverted);
+                    while let Some((edge, output)) = outputs.next(self.graph()) {
+                        let inverted = self.graph_mut().remove_edge(edge).unwrap();
+                        self.graph_mut().add_edge(x, output, x_is_inverted ^ inverted);
                     }
-                    mig.graph_mut().remove_node(node);
-                    //eprintln!("{}: M({}, {}, {}) => {1} (Ω.M)", node.index(), x.index(), y.index(), z.index());
+                    self.graph_mut().remove_node(node);
                     return Some(());
                 } else {
                     // M(x, x', y) => y
-                    let mut outputs = mig.graph().neighbors_directed(node, Outgoing).detach();
-                    while let Some((edge, output)) = outputs.next(mig.graph()) {
-                        let inverted = mig.graph_mut().remove_edge(edge).unwrap();
-                        mig.graph_mut().add_edge(z, output,  z_is_inverted ^ inverted);
+                    while let Some((edge, output)) = outputs.next(self.graph()) {
+                        let inverted = self.graph_mut().remove_edge(edge).unwrap();
+                        self.graph_mut().add_edge(z, output,  z_is_inverted ^ inverted);
                     }
-                    mig.graph_mut().remove_node(node);
-                    //eprintln!("{}: M({}, {}', {}) => {3} (Ω.M')", node.index(), x.index(), y.index(), z.index());
+                    self.graph_mut().remove_node(node);
                     return Some(());
                 }
             }
             None
         };
 
-        let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node)?;
-        let (x, _) = self.graph().edge_endpoints(x_edge).unwrap();
-        let (y, _) = self.graph().edge_endpoints(y_edge).unwrap();
-        let (z, _) = self.graph().edge_endpoints(z_edge).unwrap();
-        let x_is_inverted = self.graph()[x_edge];
-        let y_is_inverted = self.graph()[y_edge];
-        let z_is_inverted = self.graph()[z_edge];
-
-        majority(self, x_edge, y_edge, z_edge, x, y, z, x_is_inverted, y_is_inverted, z_is_inverted)
-        .or_else(|| majority(self, y_edge, z_edge, x_edge, y, z, x, y_is_inverted, z_is_inverted, x_is_inverted))
-        .or_else(|| majority(self, z_edge, x_edge, y_edge, z, x, y, z_is_inverted, x_is_inverted, y_is_inverted))
+        majority(x, y, z)
+        .or_else(|| majority(y, z, x))
+        .or_else(|| majority(z, x, y))
     }
 
     /// Transform `M(M(x, y, u), M(x, y, v), z)` into `M(x, y, M(u, v, z))`.
