@@ -9,7 +9,7 @@ fn main() {
 
     mig.optimise_area();
 
-    mig.print_graph();
+    mig.to_graphviz("graph.dot").unwrap();
     //mig.optimise_size(100);
 
     //let count = mig.count_nodes();

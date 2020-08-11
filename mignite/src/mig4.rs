@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use petgraph::{stable_graph::EdgeReference, prelude::*, visit::EdgeRef};
 
 #[derive(PartialEq)]
@@ -58,16 +60,18 @@ impl Mig {
         mig
     }
 
-    pub fn print_graph(&self) {
-        println!("strict digraph {{");
+    pub fn to_graphviz(&self, path: &str) -> std::io::Result<()> {
+        let mut f = std::fs::File::create(path)?;
+
+        writeln!(f, "strict digraph {{")?;
 
         for node in self.graph.node_indices() {
             match self.graph[node] {
                 MigNode::Input(index) => {
-                    println!("{} [shape=box,color=blue,label=\"Input {}\"];", node.index(), index);
+                    writeln!(f, "{} [shape=box,color=blue,label=\"Input {}\"];", node.index(), index)?;
                 },
                 MigNode::Output(index) => {
-                    println!("{} [shape=box,color=green,label=\"Output {}\"];", node.index(), index);
+                    writeln!(f, "{} [shape=box,color=green,label=\"Output {}\"];", node.index(), index)?;
                 },
                 MigNode::Zero => {},
                 MigNode::Majority => {
@@ -78,26 +82,12 @@ impl Mig {
                     let x_is_inverted = *self.graph().edge_weight(x_edge).expect("edge from x to node has no weight");
                     let y_is_inverted = *self.graph().edge_weight(y_edge).expect("edge from y to node has no weight");
                     let z_is_inverted = *self.graph().edge_weight(z_edge).expect("edge from z to node has no weight");
-                    if x == self.zero {
-                        if x_is_inverted {
-                            println!("{} [label=\"OR {0}\"];", node.index());
-                        } else {
-                            println!("{} [label=\"AND {0}\"];", node.index());
-                        }
-                    } else if y == self.zero {
-                        if y_is_inverted {
-                            println!("{} [label=\"OR {0}\"];", node.index());
-                        } else {
-                            println!("{} [label=\"AND {0}\"];", node.index());
-                        }
-                    } else if z == self.zero {
-                        if z_is_inverted {
-                            println!("{} [label=\"OR {0}\"];", node.index());
-                        } else {
-                            println!("{} [label=\"AND {0}\"];", node.index());
-                        }
+                    if (x == self.zero && x_is_inverted) || (y == self.zero && y_is_inverted) || (z == self.zero && z_is_inverted) {
+                        writeln!(f, "{} [label=\"OR {0}\"];", node.index())?;
+                    } else if (x == self.zero && !x_is_inverted) || (y == self.zero && !y_is_inverted) || (z == self.zero && !z_is_inverted) {
+                        writeln!(f, "{} [label=\"AND {0}\"];", node.index())?;
                     } else {
-                        println!("{} [label=\"Majority {0}\"];", node.index());
+                        writeln!(f, "{} [label=\"Majority {0}\"];", node.index())?;
                     }
                 },
             }
@@ -108,24 +98,24 @@ impl Mig {
 
             match self.graph[to] {
                 MigNode::Input(index) => {
-                    print!("{} -> {}", to.index(), from.index());
+                    write!(f, "{} -> {}", to.index(), from.index())?;
                 },
                 MigNode::Output(index) => {
-                    print!("{} -> {}", to.index(), from.index());
+                    write!(f, "{} -> {}", to.index(), from.index())?;
                 },
                 MigNode::Zero => {
-                    println!("z{} [label=\"\", shape=point];", from.index());
-                    print!("z{} -> {0}", from.index());
+                    writeln!(f, "z{} [label=\"\", shape=point];", from.index())?;
+                    write!(f, "z{} -> {0}", from.index())?;
                 },
                 MigNode::Majority => {
-                    print!("{} -> {}", to.index(), from.index());
+                    write!(f, "{} -> {}", to.index(), from.index())?;
                 },
             }
 
-            println!(" {};", if self.graph[edge] { "[dir=both,arrowtail=odot]" } else { "" });
+            writeln!(f, " {};", if self.graph[edge] { "[dir=both,arrowtail=odot]" } else { "" })?;
         }
 
-        println!("}}");
+        writeln!(f, "}}")
     }
 
     pub fn graph(&self) -> &StableGraph<MigNode, bool> {
