@@ -571,6 +571,8 @@ mod tests {
         let node_majority_inner1 = mig.graph_mut().add_node(MigNode::Majority);
         let node_majority_outer = mig.graph_mut().add_node(MigNode::Majority);
 
+        let node_output = mig.graph_mut().add_node(MigNode::Output(0));
+
         mig.graph_mut()
             .add_edge(node_input_x, node_majority_inner0, false);
         mig.graph_mut()
@@ -592,8 +594,13 @@ mod tests {
         mig.graph_mut()
             .add_edge(node_input_z, node_majority_outer, false);
 
+        mig.graph_mut()
+            .add_edge(node_majority_outer, node_output, false);
+
         mig.transform_distributivity(node_majority_outer)
             .expect("transformation to succeed");
+
+        mig.cleanup_graph();
 
         // Check for expected transformation: M(x, y, M(u, v, z))
         // Find the node that should represent the inner majority gate `M(u, v, z)`
@@ -655,6 +662,8 @@ mod tests {
         let node_majority_inner1 = mig.graph_mut().add_node(MigNode::Majority);
         let node_majority_outer = mig.graph_mut().add_node(MigNode::Majority);
 
+        let node_output = mig.graph_mut().add_node(MigNode::Output(0));
+
         mig.graph_mut()
             .add_edge(node_input_x, node_majority_inner0, true);
         mig.graph_mut()
@@ -676,8 +685,13 @@ mod tests {
         mig.graph_mut()
             .add_edge(node_input_z, node_majority_outer, false);
 
+        mig.graph_mut()
+            .add_edge(node_majority_outer, node_output, false);
+
         mig.transform_distributivity(node_majority_outer)
             .expect("transformation to succeed");
+
+        mig.cleanup_graph();
 
         // Check for expected transformation: M(x', y, M(u, v, z))
         // Find the node that should represent the inner majority gate `M(u, v, z)`
@@ -739,6 +753,8 @@ mod tests {
         let node_majority_inner1 = mig.graph_mut().add_node(MigNode::Majority);
         let node_majority_outer = mig.graph_mut().add_node(MigNode::Majority);
 
+        let node_output = mig.graph_mut().add_node(MigNode::Output(0));
+
         mig.graph_mut()
             .add_edge(node_input_x, node_majority_inner0, false);
         mig.graph_mut()
@@ -760,8 +776,13 @@ mod tests {
         mig.graph_mut()
             .add_edge(node_input_z, node_majority_outer, false);
 
+        mig.graph_mut()
+            .add_edge(node_majority_outer, node_output, false);
+
         mig.transform_distributivity(node_majority_outer)
             .expect("transformation to succeed");
+
+        mig.cleanup_graph();
 
         // Check for expected transformation: M(x, y, M(u', v, z))
         // Find the node that should represent the inner majority gate `M(u', v, z)`
@@ -823,6 +844,8 @@ mod tests {
         let node_majority_inner1 = mig.graph_mut().add_node(MigNode::Majority);
         let node_majority_outer = mig.graph_mut().add_node(MigNode::Majority);
 
+        let node_output = mig.graph_mut().add_node(MigNode::Output(0));
+
         mig.graph_mut()
             .add_edge(node_input_x, node_majority_inner0, false);
         mig.graph_mut()
@@ -844,8 +867,13 @@ mod tests {
         mig.graph_mut()
             .add_edge(node_input_z, node_majority_outer, false);
 
+        mig.graph_mut()
+            .add_edge(node_majority_outer, node_output, false);
+
         mig.transform_distributivity(node_majority_outer)
             .expect("transformation to succeed");
+
+        mig.cleanup_graph();
 
         // Check for expected transformation: M(x, y, M(u, v', z))
         // Find the node that should represent the inner majority gate `M(u, v', z)`
@@ -907,6 +935,8 @@ mod tests {
         let node_majority_inner1 = mig.graph_mut().add_node(MigNode::Majority);
         let node_majority_outer = mig.graph_mut().add_node(MigNode::Majority);
 
+        let node_output = mig.graph_mut().add_node(MigNode::Output(0));
+
         mig.graph_mut()
             .add_edge(node_input_x, node_majority_inner0, true);
         mig.graph_mut()
@@ -928,8 +958,13 @@ mod tests {
         mig.graph_mut()
             .add_edge(node_input_z, node_majority_outer, false);
 
+        mig.graph_mut()
+            .add_edge(node_majority_outer, node_output, false);
+
         mig.transform_distributivity(node_majority_outer)
             .expect("transformation to succeed");
+
+        mig.cleanup_graph();
 
         // Check for expected transformation: M(x', y, M(u, v', z))
         // Find the node that should represent the inner majority gate `M(u, v', z)`
