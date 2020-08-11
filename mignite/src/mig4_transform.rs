@@ -198,7 +198,6 @@ impl mig4::Mig {
         }
 
         let mut relevance = |x_edge: EdgeIndex, y_edge: EdgeIndex, z_edge: EdgeIndex, x: NodeIndex, y: NodeIndex, z: NodeIndex, x_is_inverted: bool, y_is_inverted: bool, z_is_inverted: bool| {
-            //eprintln!("{}: replacing {} with {} in {}", node.index(), x.index(), y.index(), z.index());
 
             let mut dfs = DfsPostOrder::new(self.graph(), z);
             let mut did_something = false;
@@ -245,8 +244,8 @@ impl mig4::Mig {
         };
 
         relevance(x_edge, y_edge, z_edge, x, y, z, x_is_inverted, y_is_inverted, z_is_inverted)
-        //relevance(y_edge, z_edge, x_edge, y, z, x, y_is_inverted, z_is_inverted, x_is_inverted);
-        //relevance(z_edge, x_edge, y_edge, z, x, y, z_is_inverted, x_is_inverted, y_is_inverted)
+        //.or_else(|| relevance(y_edge, z_edge, x_edge, y, z, x, y_is_inverted, z_is_inverted, x_is_inverted))
+        //.or_else(|| relevance(z_edge, x_edge, y_edge, z, x, y, z_is_inverted, x_is_inverted, y_is_inverted))
     }
 
     pub fn cleanup_graph(&mut self) {
@@ -285,6 +284,9 @@ impl mig4::Mig {
 
         // Explore tree.   
         for n in 0..10 {
+            let node_count = self.graph().node_count();
+            let edge_count = self.graph().edge_count();
+
             eprintln!("{}:", n);
             eprintln!("   Ω.I (propagating inverters)");
             let mut dfs = DfsPostOrder::empty(self.graph());
@@ -375,6 +377,11 @@ impl mig4::Mig {
             }
 
             self.cleanup_graph();
+
+            if self.graph().node_count() == node_count && self.graph().edge_count() == edge_count {
+                eprintln!("Nothing left to do.");
+                break;
+            }
         }
     }
 }
