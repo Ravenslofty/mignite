@@ -141,6 +141,14 @@ impl mig4::Mig {
                 return None;
             }
 
+            // Distributivity improves area if j is the sole user of both b and c, and is area-neutral if j is the sole user of one of b or c.
+            let b_parents = self.graph().edges_directed(b, Outgoing).count();
+            let c_parents = self.graph().edges_directed(c, Outgoing).count();
+
+            if b_parents > 1 && c_parents > 1 {
+                return None;
+            }
+
             let mut shared_iter = shared.iter();
             let mut unique_iter = unique.iter();
 
