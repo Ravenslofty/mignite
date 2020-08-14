@@ -241,7 +241,6 @@ impl mig4::Mig {
         eprintln!("GC: removed {} nodes", nodes - self.graph().node_count());
 
         let nodes = self.graph().node_count();
-        let edges = self.graph().edge_count();
 
         // Attempt to deduplicate the graph.
         let mut hash: std::collections::HashMap<[(NodeIndex<u32>, bool); 3], NodeIndex> = std::collections::HashMap::new();
@@ -256,27 +255,25 @@ impl mig4::Mig {
                 let y_is_inverted = self.graph()[y_edge];
                 let z_is_inverted = self.graph()[z_edge];
 
-                let mut children = [(x, x_is_inverted), (y, y_is_inverted), (z, z_is_inverted)];
-                //children.sort_by_key(|(node, _)| node.index());
+                let children = [(x, x_is_inverted), (y, y_is_inverted), (z, z_is_inverted)];
 
                 if let Some(dest) = hash.get(&children) {
                     let mut outputs = self.graph().neighbors_directed(node, Outgoing).detach();
                     while let Some((edge, output)) = outputs.next(self.graph()) {
                         let inverted = self.graph_mut().remove_edge(edge).unwrap();
-                        self.graph_mut().add_edge(x, output, inverted);
+                        self.graph_mut().add_edge(*dest, output, inverted);
                     }
                     self.graph_mut().remove_node(node);
                     continue;
                 }
 
-                let mut children_inverted = [(x, !x_is_inverted), (y, !y_is_inverted), (z, !z_is_inverted)];
-                //children_inverted.sort_by_key(|(node, _)| node.index());
+                let children_inverted = [(x, !x_is_inverted), (y, !y_is_inverted), (z, !z_is_inverted)];
 
                 if let Some(dest) = hash.get(&children_inverted) {
                     let mut outputs = self.graph().neighbors_directed(node, Outgoing).detach();
                     while let Some((edge, output)) = outputs.next(self.graph()) {
                         let inverted = self.graph_mut().remove_edge(edge).unwrap();
-                        self.graph_mut().add_edge(x, output, !inverted);
+                        self.graph_mut().add_edge(*dest, output, !inverted);
                     }
                     self.graph_mut().remove_node(node);
                     continue;
