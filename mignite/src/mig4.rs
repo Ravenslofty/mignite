@@ -2,7 +2,7 @@ use std::io::Write;
 
 use petgraph::{stable_graph::EdgeReference, prelude::*, visit::EdgeRef};
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum MigNode {
     Input(u32),
     Output(u32),
@@ -54,6 +54,7 @@ impl Mig {
                     let i1 = mig.graph.add_edge(NodeIndex::new(input1.variable()), gate, input1.is_inverted());
                     let i2 = mig.graph.add_edge(mig.zero, gate, false);
                 },
+                aiger::Aiger::Symbol { type_spec, position, symbol } => {}
             }
         }
 

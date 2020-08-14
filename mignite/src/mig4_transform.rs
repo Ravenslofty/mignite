@@ -43,6 +43,8 @@ impl mig4::Mig {
         .or_else(|| majority(z, x, y))
     }
 
+    /// Transform `M(x, u, M(y, u, z))` to `M(z, u, M(y, u, x))`
+    #[allow(clippy::many_single_char_names)]
     pub fn transform_associativity(&mut self, node: NodeIndex) -> Option<()> {
         let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node)?;
 
@@ -66,15 +68,59 @@ impl mig4::Mig {
         };
 
 
-        let mut associativity = |x_edge: EdgeIndex, y_edge: EdgeIndex, z_edge: EdgeIndex| {
+        let mut associativity = |x_edge: EdgeIndex, y_edge: EdgeIndex, a_edge: EdgeIndex| {
             let (x, _) = self.graph().edge_endpoints(x_edge).unwrap();
             let (y, _) = self.graph().edge_endpoints(y_edge).unwrap();
-            let (z, _) = self.graph().edge_endpoints(z_edge).unwrap();
-            let (a_edge, b_edge, c_edge) = self.try_unwrap_majority(node).unwrap();
-            todo!()
+            let (a, _) = self.graph().edge_endpoints(a_edge).unwrap();
+            let x_is_inverted = self.graph()[x_edge];
+            let y_is_inverted = self.graph()[y_edge];
+            let a_is_inverted = self.graph()[a_edge];
+            let (b_edge, c_edge, d_edge) = self.try_unwrap_majority(a)?;
+            let (b, _) = self.graph().edge_endpoints(b_edge).unwrap();
+            let (c, _) = self.graph().edge_endpoints(c_edge).unwrap();
+            let (d, _) = self.graph().edge_endpoints(d_edge).unwrap();
+            let b_is_inverted = self.graph()[b_edge];
+            let c_is_inverted = self.graph()[c_edge];
+            let d_is_inverted = self.graph()[d_edge];
+        
+            if x_is_inverted || y_is_inverted || a_is_inverted || b_is_inverted || c_is_inverted || d_is_inverted {
+                return None;
+            }
+
+            let (shared, unique) = classify_inputs((x, x_is_inverted), (y, y_is_inverted), (b, b_is_inverted ^ a_is_inverted), (c, c_is_inverted ^ a_is_inverted), (d, d_is_inverted ^ a_is_inverted));
+
+            if shared.len() != 1 || unique.len() != 3 {
+                return None;
+            }
+
+            let mut shared_iter = shared.iter();
+            let mut unique_iter = unique.iter();
+
+            let (u, u_is_inverted) = shared_iter.next().unwrap();
+
+            // TODO: this needs to figure out which input is in the outer gate.
+            let (x, x_is_inverted) = unique_iter.next().unwrap();
+            let (y, y_is_inverted) = unique_iter.next().unwrap();
+            let (z, z_is_inverted) = unique_iter.next().unwrap();
+
+            let e = self.graph_mut().add_node(MigNode::Majority);
+            self.graph_mut().add_edge(*u, e, *u_is_inverted);
+            self.graph_mut().add_edge(*x, e, *x_is_inverted);
+            self.graph_mut().add_edge(*y, e, *y_is_inverted);
+
+            self.graph_mut().remove_edge(a_edge);
+            self.graph_mut().remove_edge(x_edge);
+            self.graph_mut().add_edge(e, node, false);
+            self.graph_mut().add_edge(*z, node, *z_is_inverted);
+
+            //eprintln!("{}: M({}, {}, M({}, {}, {}))", node.index(), x.index(), z.index());
+
+            Some(())
         };
 
-        todo!()
+        associativity(x_edge, y_edge, z_edge)
+        .or_else(|| associativity(y_edge, z_edge, x_edge))
+        .or_else(|| associativity(z_edge, x_edge, y_edge))
     }
 
     /// Transform `M(M(x, y, u), M(x, y, v), z)` into `M(x, y, M(u, v, z))`.
@@ -288,6 +334,8 @@ impl mig4::Mig {
     pub fn print_stats(&self) {
         // Calculate graph depth (for fun).
         let mut max_depth = 0;
+        let mut max_depth_input = 0_usize;
+        let mut max_depth_output = 0_usize;
         let mut sum_depth = 0;
         let mut sum_outputs = 0;
 
@@ -299,15 +347,18 @@ impl mig4::Mig {
 
             for input in &inputs {
                 if let Some(depth) = counts.get(&input) {
-                    //eprintln!("Path from {} to {}")
-                    max_depth = max_depth.max(*depth);
+                    if *depth > max_depth {
+                        max_depth = *depth;
+                        max_depth_input = input.index();
+                        max_depth_output = output.index();
+                    }
                     sum_depth += depth;
                     sum_outputs += 1;
                 }
             }
         }
 
-        eprintln!("MIG: maximum gate depth is {}, average gate depth is {:.1}", max_depth, f64::from(sum_depth) / f64::from(sum_outputs));
+        eprintln!("MIG: maximum gate depth is {} between input {} and output {}, average gate depth is {:.1}", max_depth, max_depth_input, max_depth_output, f64::from(sum_depth) / f64::from(sum_outputs));
         eprintln!("MIG: there are {} nodes and {} edges in the graph", self.graph().node_count(), self.graph().edge_count());
     }
 
@@ -319,57 +370,93 @@ impl mig4::Mig {
         // Find graph inputs.
         let inputs = self.graph().externals(Incoming).collect::<Vec<_>>();
 
+        // Helper functions.
+        let majority = |graph: &mut Self| {
+            let mut did_something = true;
+            eprintln!("   Ω.M (rewriting gates dominated by a node)");
+            while did_something {
+                did_something = false;
+                let mut dfs = DfsPostOrder::empty(graph.graph());
+                let mut nodes = Vec::new();
+                for input in inputs.clone() {
+                    dfs.move_to(input);
+                    while let Some(node) = dfs.next(graph.graph()) {
+                        did_something |= graph.transform_inverters(node).is_some();
+                        nodes.push(node);
+                    }
+                }
+
+                for node in nodes {
+                    did_something |= graph.transform_majority(node).is_some();
+                }
+            }
+        };
+
+        let distributivity = |graph: &mut Self| {
+            let mut did_something = true;
+            eprintln!("   Ω.D (rewriting gates with common children)");
+            while did_something {
+                did_something = false;
+                let mut dfs = DfsPostOrder::empty(graph.graph());
+                let mut nodes = Vec::new();
+                for input in inputs.clone() {
+                    dfs.move_to(input);
+                    while let Some(node) = dfs.next(graph.graph()) {
+                        did_something |= graph.transform_inverters(node).is_some();
+                        nodes.push(node);
+                    }
+                }
+    
+                for node in nodes {
+                    did_something |= graph.transform_distributivity(node).is_some();
+                }
+            }
+        };
+
+        let associativity = |graph: &mut Self| {
+            eprintln!("   Ω.A (swapping terms across gates)");
+            // Because associativity is a reversible transformation, running it multiple times infinite-loops.
+            let mut dfs = DfsPostOrder::empty(graph.graph());
+            let mut nodes = Vec::new();
+            for input in inputs.clone() {
+                dfs.move_to(input);
+                while let Some(node) = dfs.next(graph.graph()) {
+                    graph.transform_inverters(node);
+                    nodes.push(node);
+                }
+            }
+
+            //graph.to_graphviz("before.dot");
+
+            for node in nodes {
+                graph.transform_associativity(node);
+            }
+
+            graph.cleanup_graph();
+
+            //graph.to_graphviz("after.dot");
+        };
+
         // Explore tree.
-        let mut try_reshape = false;
-        for n in 0..10 {
+        for n in 0..100 {
             let node_count = self.graph().node_count();
             let edge_count = self.graph().edge_count();
 
             eprintln!("{}:", n);
-            eprintln!("   Ω.I (propagating inverters)");
-            let mut dfs = DfsPostOrder::empty(self.graph());
-            let mut nodes = Vec::new();
-            for input in inputs.clone() {
-                dfs.move_to(input);
-                while let Some(node) = dfs.next(self.graph()) {
-                    self.transform_inverters(node);
-                    nodes.push(node);
-                }
-            }
 
-            eprintln!("   Ω.M (rewriting gates dominated by a node)");
-            for node in nodes {
-                self.transform_majority(node);
-            }
+            majority(self);
+            distributivity(self);
+            associativity(self);
+            majority(self);
+            distributivity(self);
 
-            self.cleanup_graph();
-
-            eprintln!("   Ω.I (propagating inverters)");
-            let mut dfs = DfsPostOrder::empty(self.graph());
-            let mut nodes = Vec::new();
-            for input in inputs.clone() {
-                dfs.move_to(input);
-                while let Some(node) = dfs.next(self.graph()) {
-                    self.transform_inverters(node);
-                    nodes.push(node);
-                }
-            }
-
-            eprintln!("   Ω.D (rewriting gates with common children)");
-            for node in nodes {
-                self.transform_distributivity(node);
-            }
-
-            self.cleanup_graph();
-            self.print_stats();
-
-            if self.graph().node_count() == node_count && self.graph().edge_count() == edge_count {
-                eprintln!("Nothing left to do.");
+            if node_count == self.graph().node_count() && edge_count == self.graph().edge_count() {
                 break;
-            } else {
-                try_reshape = false;
             }
         }
+
+        self.cleanup_graph();
+        self.print_stats();
     }
 }
 
