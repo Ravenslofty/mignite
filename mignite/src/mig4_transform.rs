@@ -214,7 +214,6 @@ impl mig4::Mig {
 
     pub fn cleanup_graph(&mut self) {
         let nodes = self.graph().node_count();
-        let edges = self.graph().edge_count();
 
         // Look for orphan nodes (nodes not connected to an output).
         let mut did_something = true;
@@ -284,11 +283,37 @@ impl mig4::Mig {
         }
 
         eprintln!("GC: deduplicated {} nodes", nodes - self.graph().node_count());
-        eprintln!("GC: there are {} nodes and {} edges in the graph", self.graph().node_count(), self.graph().edge_count());
+    }
+
+    pub fn print_stats(&self) {
+        // Calculate graph depth (for fun).
+        let mut max_depth = 0;
+        let mut sum_depth = 0;
+        let mut sum_outputs = 0;
+
+        let inputs = self.graph().externals(Outgoing).collect::<Vec<_>>();
+        let outputs = self.graph().externals(Incoming).collect::<Vec<_>>();
+
+        for output in outputs {
+            let counts = petgraph::algo::dijkstra(self.graph(), output, None, |_| 1);
+
+            for input in &inputs {
+                if let Some(depth) = counts.get(&input) {
+                    //eprintln!("Path from {} to {}")
+                    max_depth = max_depth.max(*depth);
+                    sum_depth += depth;
+                    sum_outputs += 1;
+                }
+            }
+        }
+
+        eprintln!("MIG: maximum gate depth is {}, average gate depth is {:.1}", max_depth, f64::from(sum_depth) / f64::from(sum_outputs));
+        eprintln!("MIG: there are {} nodes and {} edges in the graph", self.graph().node_count(), self.graph().edge_count());
     }
 
     pub fn optimise_area(&mut self) {
         // Clean up graph orphans.
+        self.print_stats();
         self.cleanup_graph();
 
         // Find graph inputs.
@@ -336,12 +361,9 @@ impl mig4::Mig {
             }
 
             self.cleanup_graph();
+            self.print_stats();
 
             if self.graph().node_count() == node_count && self.graph().edge_count() == edge_count {
-                if !try_reshape {
-                    try_reshape = true;
-                    continue;
-                }
                 eprintln!("Nothing left to do.");
                 break;
             } else {
