@@ -357,10 +357,7 @@ impl mig4::Mig {
             }
         }
 
-        eprintln!(
-            "GC: deduplicated {} nodes",
-            nodes - self.node_count()
-        );
+        eprintln!("GC: deduplicated {} nodes", nodes - self.node_count());
     }
 
     pub fn print_stats(&self) {
