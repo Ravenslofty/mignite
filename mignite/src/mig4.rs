@@ -4,7 +4,7 @@ use std::io::Write;
 
 use petgraph::{prelude::*, visit::EdgeRef};
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MigNode {
     Input(u32),
     Output(u32),
@@ -183,13 +183,58 @@ impl Mig {
         writeln!(f, "}}")
     }
 
-    #[must_use]
-    pub const fn graph(&self) -> &StableGraph<MigNode, bool> {
+    pub(crate) const fn graph(&self) -> &StableGraph<MigNode, bool> {
         &self.graph
     }
 
-    pub fn graph_mut(&mut self) -> &mut StableGraph<MigNode, bool> {
+    pub(crate) fn graph_mut(&mut self) -> &mut StableGraph<MigNode, bool> {
         &mut self.graph
+    }
+
+    #[must_use]
+    pub fn is_edge_inverted(&self, edge: EdgeIndex) -> bool {
+        self.graph[edge]
+    }
+
+    #[must_use]
+    pub fn edge_source(&self, edge: EdgeIndex) -> NodeIndex {
+        self.graph.edge_endpoints(edge).unwrap().0
+    }
+
+    pub fn add_edge(&mut self, source: NodeIndex, target: NodeIndex, inverted: bool) -> EdgeIndex {
+        self.graph.add_edge(source, target, inverted)
+    }
+
+    pub fn remove_edge(&mut self, edge: EdgeIndex) -> bool {
+        self.graph.remove_edge(edge).unwrap()
+    }
+
+    #[must_use]
+    pub fn node_type(&self, node: NodeIndex) -> MigNode {
+        self.graph[node]
+    }
+
+    pub fn add_node(&mut self, kind: MigNode) -> NodeIndex {
+        self.graph.add_node(kind)
+    }
+
+    pub fn remove_node(&mut self, node: NodeIndex) -> MigNode {
+        self.graph.remove_node(node).unwrap()
+    }
+
+    #[must_use]
+    pub fn output_edges(&self, node: NodeIndex) -> petgraph::stable_graph::Neighbors<bool, u32> {
+        self.graph.neighbors_directed(node, Outgoing)
+    }
+
+    #[must_use]
+    pub fn node_count(&self) -> usize {
+        self.graph.node_count()
+    }
+
+    #[must_use]
+    pub fn edge_count(&self) -> usize {
+        self.graph.edge_count()
     }
 
     #[must_use]

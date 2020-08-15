@@ -74,7 +74,7 @@ end
             .graph()
             .node_indices()
             .filter_map(|node| {
-                let mig_node = &self.graph()[node];
+                let mig_node = &self.node_type(node);
                 let (wire_type, index) = match mig_node {
                     MigNode::Input(index) => (WireType::Input, index),
                     MigNode::Output(index) => (WireType::Output, index),
@@ -102,7 +102,7 @@ end
         writeln!(writer, "  wire $node$0")?;
         writeln!(writer, "  connect $node$0 1'0")?;
         for node in self.graph().node_indices() {
-            let mig_node = &self.graph()[node];
+            let mig_node = &self.node_type(node);
             match mig_node {
                 MigNode::Majority | MigNode::Output(_) => {
                     writeln!(writer, "  wire $node${}", node.index())?;
@@ -165,10 +165,10 @@ end
 
         let mut uid = 0;
         let mut prep_edge = |writer: &mut T, edge| -> io::Result<String> {
-            let (from, _) = self.graph().edge_endpoints(edge).unwrap();
+            let from = self.edge_source(edge);
             let mut ident = format!("$node${}", from.index());
 
-            let is_inverted = self.graph()[edge];
+            let is_inverted = self.is_edge_inverted(edge);
             if is_inverted {
                 let inv_ident = format!("{}${}$n", ident, uid);
 
@@ -186,7 +186,7 @@ end
         };
 
         for node in self.graph().node_indices() {
-            let mig_node = &self.graph()[node];
+            let mig_node = &self.node_type(node);
             match mig_node {
                 MigNode::Majority => {
                     let (a_edge, b_edge, c_edge) = self.try_unwrap_majority(node).unwrap();
