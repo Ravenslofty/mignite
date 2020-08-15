@@ -1,7 +1,8 @@
-use std::io::Write;
 use std::collections::HashMap;
+use std::convert::TryFrom;
+use std::io::Write;
 
-use petgraph::{stable_graph::EdgeReference, prelude::*, visit::EdgeRef};
+use petgraph::{prelude::*, visit::EdgeRef};
 
 #[derive(Debug, PartialEq)]
 pub enum MigNode {
@@ -19,6 +20,8 @@ pub struct Mig {
 }
 
 impl Mig {
+    #[allow(clippy::similar_names)]
+    #[must_use]
     pub fn from_aiger(path: &str) -> Self {
         let file = std::fs::File::open(path).unwrap();
         let reader = aiger::Reader::from_reader(file).unwrap();
@@ -40,7 +43,7 @@ impl Mig {
         for record in reader.records() {
             match record.unwrap() {
                 aiger::Aiger::Input(l) => {
-                    let index = l.variable() as u32;
+                    let index = u32::try_from(l.variable()).unwrap();
                     mig.graph[NodeIndex::new(l.variable())] = MigNode::Input(index);
                     inputs.push(index);
                 },
@@ -48,7 +51,7 @@ impl Mig {
                     todo!("latches")
                 },
                 aiger::Aiger::Output(l) => {
-                    let index = l.variable() as u32;
+                    let index = u32::try_from(l.variable()).unwrap();
                     let output_node = mig.graph.add_node(MigNode::Output(index));
                     mig.graph.add_edge(NodeIndex::new(l.variable()), output_node, l.is_inverted());
                     outputs.push(index);
@@ -59,9 +62,9 @@ impl Mig {
 
                     let gate = NodeIndex::new(output.variable());
 
-                    let i0 = mig.graph.add_edge(NodeIndex::new(input0.variable()), gate, input0.is_inverted());
-                    let i1 = mig.graph.add_edge(NodeIndex::new(input1.variable()), gate, input1.is_inverted());
-                    let i2 = mig.graph.add_edge(mig.zero, gate, false);
+                    mig.graph.add_edge(NodeIndex::new(input0.variable()), gate, input0.is_inverted());
+                    mig.graph.add_edge(NodeIndex::new(input1.variable()), gate, input1.is_inverted());
+                    mig.graph.add_edge(mig.zero, gate, false);
                 },
                 aiger::Aiger::Symbol { type_spec, position, symbol } => {
                     let index = match type_spec {
@@ -78,6 +81,7 @@ impl Mig {
         mig
     }
 
+    #[allow(clippy::missing_errors_doc)]
     pub fn to_graphviz(&self, path: &str) -> std::io::Result<()> {
         let mut f = std::fs::File::create(path)?;
 
@@ -115,18 +119,12 @@ impl Mig {
             let (to, from) = self.graph.edge_endpoints(edge).unwrap();
 
             match self.graph[to] {
-                MigNode::Input(index) => {
-                    write!(f, "{} -> {}", to.index(), from.index())?;
-                },
-                MigNode::Output(index) => {
+                MigNode::Input(_) | MigNode::Output(_) | MigNode::Majority => {
                     write!(f, "{} -> {}", to.index(), from.index())?;
                 },
                 MigNode::Zero => {
                     writeln!(f, "z{} [label=\"\", shape=point];", from.index())?;
                     write!(f, "z{} -> {0}", from.index())?;
-                },
-                MigNode::Majority => {
-                    write!(f, "{} -> {}", to.index(), from.index())?;
                 },
             }
 
@@ -136,6 +134,7 @@ impl Mig {
         writeln!(f, "}}")
     }
 
+    #[must_use]
     pub fn graph(&self) -> &StableGraph<MigNode, bool> {
         &self.graph
     }
@@ -144,15 +143,15 @@ impl Mig {
         &mut self.graph
     }
 
+    #[must_use]
     pub fn symbol(&self, index: u32) -> Option<&String> {
         self.symbol_table.get(&index)
     }
 
+    #[must_use]
     pub fn try_unwrap_majority(&self, node: NodeIndex) -> Option<(EdgeIndex, EdgeIndex, EdgeIndex)> {
         match self.graph[node] {
-            MigNode::Input(_) => None,
-            MigNode::Output(_) => None,
-            MigNode::Zero => None,
+            MigNode::Input(_) | MigNode::Output(_) | MigNode::Zero => None,
             MigNode::Majority => {
                 let mut iter = self.graph.edges_directed(node, Incoming);
                 match (iter.next(), iter.next(), iter.next()) {
@@ -172,7 +171,7 @@ impl Mig {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{Mig, MigNode};
 
     #[test]
     fn try_unwrap_majority() {

@@ -44,17 +44,16 @@ impl mig4::Mig {
     }
 
     /// Transform `M(x, u, M(y, u, z))` to `M(z, u, M(y, u, x))`
-    #[allow(clippy::many_single_char_names)]
+    #[allow(clippy::many_single_char_names, clippy::shadow_unrelated)]
     pub fn transform_associativity(&mut self, node: NodeIndex) -> Option<()> {
-        let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node)?;
-
         type Input = (NodeIndex, bool);
+
         let classify_inputs = |i1: Input, i2: Input, i3: Input, i4: Input, i5: Input| {
             let all = [i1, i2, i3, i4, i5];
             let mut shared = std::collections::HashSet::new();
             let mut unique = std::collections::HashSet::new();
 
-            for input in all.iter() {
+            for input in &all {
                 let count = all.iter().filter(|input2| *input2 == input).count();
 
                 if count == 1 {
@@ -67,6 +66,7 @@ impl mig4::Mig {
             (shared, unique)
         };
 
+        let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node)?;
 
         let mut associativity = |x_edge: EdgeIndex, y_edge: EdgeIndex, a_edge: EdgeIndex| {
             let (x, _) = self.graph().edge_endpoints(x_edge).unwrap();
@@ -124,20 +124,15 @@ impl mig4::Mig {
     }
 
     /// Transform `M(M(x, y, u), M(x, y, v), z)` into `M(x, y, M(u, v, z))`.
-    #[allow(clippy::many_single_char_names)]
+    #[allow(clippy::many_single_char_names, clippy::similar_names)]
     pub fn transform_distributivity(&mut self, node: NodeIndex) -> Option<()> {
-        let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node)?;
-        let (x, _) = self.graph().edge_endpoints(x_edge).unwrap();
-        let (y, _) = self.graph().edge_endpoints(y_edge).unwrap();
-        let (z, _) = self.graph().edge_endpoints(z_edge).unwrap();
-
         type Input = (NodeIndex, bool);
         let classify_inputs = |i1: Input, i2: Input, i3: Input, i4: Input, i5: Input, i6: Input| {
             let all = [i1, i2, i3, i4, i5, i6];
             let mut shared = std::collections::HashSet::new();
             let mut unique = std::collections::HashSet::new();
 
-            for input in all.iter() {
+            for input in &all {
                 let count = all.iter().filter(|input2| *input2 == input).count();
 
                 if count == 1 {
@@ -150,6 +145,10 @@ impl mig4::Mig {
             (shared, unique)
         };
 
+        let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node)?;
+        let (x, _) = self.graph().edge_endpoints(x_edge).unwrap();
+        let (y, _) = self.graph().edge_endpoints(y_edge).unwrap();
+        let (z, _) = self.graph().edge_endpoints(z_edge).unwrap();
 
         let mut distributivity = |b_edge: EdgeIndex, c_edge: EdgeIndex, z_edge: EdgeIndex, b: NodeIndex, c: NodeIndex, z: NodeIndex| {
             //         j
@@ -227,14 +226,11 @@ impl mig4::Mig {
 
     fn transform_inverters(&mut self, node: NodeIndex) -> Option<()> {
         let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node)?;
-        let (x, _) = self.graph().edge_endpoints(x_edge).unwrap();
-        let (y, _) = self.graph().edge_endpoints(y_edge).unwrap();
-        let (z, _) = self.graph().edge_endpoints(z_edge).unwrap();
         let x_is_inverted = *self.graph().edge_weight(x_edge).expect("edge from x to node has no weight");
         let y_is_inverted = *self.graph().edge_weight(y_edge).expect("edge from y to node has no weight");
         let z_is_inverted = *self.graph().edge_weight(z_edge).expect("edge from z to node has no weight");
 
-        let mut inverter_propagation = |x: NodeIndex, y: NodeIndex, z: NodeIndex, x_is_inverted: bool, y_is_inverted: bool| {
+        let mut inverter_propagation = |x_is_inverted: bool, y_is_inverted: bool| {
             if x_is_inverted && y_is_inverted {
                 let mut inputs = self.graph().neighbors_directed(node, Incoming).detach();
                 while let Some(edge) = inputs.next_edge(self.graph()) {
@@ -253,13 +249,13 @@ impl mig4::Mig {
             None
         };
 
-        inverter_propagation(x, y, z, x_is_inverted, y_is_inverted)
-        .or_else(|| inverter_propagation(y, z, x, y_is_inverted, z_is_inverted))
-        .or_else(|| inverter_propagation(z, x, y, z_is_inverted, x_is_inverted))
+        inverter_propagation(x_is_inverted, y_is_inverted)
+        .or_else(|| inverter_propagation(y_is_inverted, z_is_inverted))
+        .or_else(|| inverter_propagation(z_is_inverted, x_is_inverted))
     }
 
     pub fn cleanup_graph(&mut self) {
-        let nodes = self.graph().node_count();
+        let mut nodes = self.graph().node_count();
 
         // Look for orphan nodes (nodes not connected to an output).
         let mut did_something = true;
@@ -285,7 +281,7 @@ impl mig4::Mig {
 
         eprintln!("GC: removed {} nodes", nodes - self.graph().node_count());
 
-        let nodes = self.graph().node_count();
+        nodes = self.graph().node_count();
 
         // Attempt to deduplicate the graph.
         let mut hash: std::collections::HashMap<[(NodeIndex<u32>, bool); 3], NodeIndex> = std::collections::HashMap::new();
@@ -373,7 +369,7 @@ impl mig4::Mig {
         // Helper functions.
         let majority = |graph: &mut Self| {
             let mut did_something = true;
-            eprintln!("   Ω.M (rewriting gates dominated by a node)");
+            eprintln!("   \u{3a9}.M (rewriting gates dominated by a node)");
             while did_something {
                 did_something = false;
                 let mut dfs = DfsPostOrder::empty(graph.graph());
@@ -394,7 +390,7 @@ impl mig4::Mig {
 
         let distributivity = |graph: &mut Self| {
             let mut did_something = true;
-            eprintln!("   Ω.D (rewriting gates with common children)");
+            eprintln!("   \u{3a9}.D (rewriting gates with common children)");
             while did_something {
                 did_something = false;
                 let mut dfs = DfsPostOrder::empty(graph.graph());
@@ -414,7 +410,7 @@ impl mig4::Mig {
         };
 
         let associativity = |graph: &mut Self| {
-            eprintln!("   Ω.A (swapping terms across gates)");
+            eprintln!("   \u{3a9}.A (swapping terms across gates)");
             // Because associativity is a reversible transformation, running it multiple times infinite-loops.
             let mut dfs = DfsPostOrder::empty(graph.graph());
             let mut nodes = Vec::new();
@@ -426,15 +422,11 @@ impl mig4::Mig {
                 }
             }
 
-            //graph.to_graphviz("before.dot");
-
             for node in nodes {
                 graph.transform_associativity(node);
             }
 
             graph.cleanup_graph();
-
-            //graph.to_graphviz("after.dot");
         };
 
         // Explore tree.
@@ -462,13 +454,13 @@ impl mig4::Mig {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{MigNode, Outgoing, mig4};
 
     macro_rules! assert_edge {
         ($graph:expr, $a:expr, $b:expr, $weight:expr) => {
             let edge = $graph
                 .find_edge($a, $b)
-                .expect(&format!("edge between {:?} and {:?} to exist", $a, $b));
+                .unwrap_or_else(|| panic!("edge between {:?} and {:?} to exist", $a, $b));
             assert_eq!(
                 $graph[edge], $weight,
                 "edge between {:?} and {:?} has weight {:?}, expected {:?}",

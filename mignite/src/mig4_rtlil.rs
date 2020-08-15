@@ -2,7 +2,7 @@ use crate::mig4;
 use mig4::MigNode;
 use std::collections::HashSet;
 
-use petgraph::{prelude::*, stable_graph::EdgeReference, visit::EdgeRef};
+use petgraph::{prelude::*, visit::EdgeRef};
 use std::io;
 
 fn to_symbol_and_bit(s: &str) -> (&str, u32) {
@@ -30,7 +30,13 @@ fn to_symbol_and_bit(s: &str) -> (&str, u32) {
 }
 
 impl mig4::Mig {
+    #[allow(clippy::too_many_lines, clippy::missing_errors_doc)]
     pub fn to_rtlil<T: io::Write>(&self, mut writer: T) -> io::Result<()> {
+        enum WireType {
+            Input,
+            Output,
+        }
+
         writeln!(
             writer,
             "module \\majority
@@ -64,11 +70,6 @@ end
 "
         )?;
 
-        enum WireType {
-            Input,
-            Output,
-        }
-
         let wires = self.graph().node_indices()
             .filter_map(|node| {
                 let mig_node = &self.graph()[node];
@@ -88,7 +89,7 @@ end
                         WireType::Output => "output",
                     };
 
-                    (format!("{}${}", wire_type_str, node.index()).to_string(), 0)
+                    (format!("{}${}", wire_type_str, node.index()), 0)
                 };
 
                 Some((node, ident, wire_type))
