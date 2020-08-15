@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::collections::HashMap;
 
 use petgraph::{stable_graph::EdgeReference, prelude::*, visit::EdgeRef};
 
@@ -13,6 +14,7 @@ pub enum MigNode {
 #[derive(Default)]
 pub struct Mig {
     graph: StableGraph<MigNode, bool, Directed>,
+    symbol_table: HashMap<u32, String>,
     zero: NodeIndex,
 }
 
@@ -32,17 +34,24 @@ impl Mig {
             assert_eq!(node_index.index(), variable);
         }
 
+        let mut inputs = vec![];
+        let mut outputs = vec![];
+
         for record in reader.records() {
             match record.unwrap() {
                 aiger::Aiger::Input(l) => {
-                    mig.graph[NodeIndex::new(l.variable())] = MigNode::Input(l.variable() as u32);
+                    let index = l.variable() as u32;
+                    mig.graph[NodeIndex::new(l.variable())] = MigNode::Input(index);
+                    inputs.push(index);
                 },
                 aiger::Aiger::Latch { output: _, input: _ } => {
                     todo!("latches")
                 },
                 aiger::Aiger::Output(l) => {
-                    let output_node = mig.graph.add_node(MigNode::Output(l.variable() as u32));
+                    let index = l.variable() as u32;
+                    let output_node = mig.graph.add_node(MigNode::Output(index));
                     mig.graph.add_edge(NodeIndex::new(l.variable()), output_node, l.is_inverted());
+                    outputs.push(index);
                 },
                 aiger::Aiger::AndGate { output, inputs } => {
                     let input0 = inputs[0];
@@ -54,7 +63,15 @@ impl Mig {
                     let i1 = mig.graph.add_edge(NodeIndex::new(input1.variable()), gate, input1.is_inverted());
                     let i2 = mig.graph.add_edge(mig.zero, gate, false);
                 },
-                aiger::Aiger::Symbol { type_spec, position, symbol } => {}
+                aiger::Aiger::Symbol { type_spec, position, symbol } => {
+                    let index = match type_spec {
+                        aiger::Symbol::Input => inputs[position],
+                        aiger::Symbol::Output => outputs[position],
+                        aiger::Symbol::Latch => continue,
+                    };
+
+                    mig.symbol_table.insert(index, symbol);
+                }
             }
         }
 
@@ -125,6 +142,10 @@ impl Mig {
 
     pub fn graph_mut(&mut self) -> &mut StableGraph<MigNode, bool> {
         &mut self.graph
+    }
+
+    pub fn symbol(&self, index: u32) -> Option<&String> {
+        self.symbol_table.get(&index)
     }
 
     pub fn try_unwrap_majority(&self, node: NodeIndex) -> Option<(EdgeIndex, EdgeIndex, EdgeIndex)> {
