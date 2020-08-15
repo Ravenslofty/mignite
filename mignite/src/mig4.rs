@@ -46,27 +46,41 @@ impl Mig {
                     let index = u32::try_from(l.variable()).unwrap();
                     mig.graph[NodeIndex::new(l.variable())] = MigNode::Input(index);
                     inputs.push(index);
-                },
-                aiger::Aiger::Latch { output: _, input: _ } => {
-                    todo!("latches")
-                },
+                }
+                aiger::Aiger::Latch {
+                    output: _,
+                    input: _,
+                } => todo!("latches"),
                 aiger::Aiger::Output(l) => {
                     let index = u32::try_from(l.variable()).unwrap();
                     let output_node = mig.graph.add_node(MigNode::Output(index));
-                    mig.graph.add_edge(NodeIndex::new(l.variable()), output_node, l.is_inverted());
+                    mig.graph
+                        .add_edge(NodeIndex::new(l.variable()), output_node, l.is_inverted());
                     outputs.push(index);
-                },
+                }
                 aiger::Aiger::AndGate { output, inputs } => {
                     let input0 = inputs[0];
                     let input1 = inputs[1];
 
                     let gate = NodeIndex::new(output.variable());
 
-                    mig.graph.add_edge(NodeIndex::new(input0.variable()), gate, input0.is_inverted());
-                    mig.graph.add_edge(NodeIndex::new(input1.variable()), gate, input1.is_inverted());
+                    mig.graph.add_edge(
+                        NodeIndex::new(input0.variable()),
+                        gate,
+                        input0.is_inverted(),
+                    );
+                    mig.graph.add_edge(
+                        NodeIndex::new(input1.variable()),
+                        gate,
+                        input1.is_inverted(),
+                    );
                     mig.graph.add_edge(mig.zero, gate, false);
-                },
-                aiger::Aiger::Symbol { type_spec, position, symbol } => {
+                }
+                aiger::Aiger::Symbol {
+                    type_spec,
+                    position,
+                    symbol,
+                } => {
                     let index = match type_spec {
                         aiger::Symbol::Input => inputs[position],
                         aiger::Symbol::Output => outputs[position],
@@ -90,28 +104,55 @@ impl Mig {
         for node in self.graph.node_indices() {
             match self.graph[node] {
                 MigNode::Input(index) => {
-                    writeln!(f, "{} [shape=box,color=blue,label=\"Input {}\"];", node.index(), index)?;
-                },
+                    writeln!(
+                        f,
+                        "{} [shape=box,color=blue,label=\"Input {}\"];",
+                        node.index(),
+                        index
+                    )?;
+                }
                 MigNode::Output(index) => {
-                    writeln!(f, "{} [shape=box,color=green,label=\"Output {}\"];", node.index(), index)?;
-                },
-                MigNode::Zero => {},
+                    writeln!(
+                        f,
+                        "{} [shape=box,color=green,label=\"Output {}\"];",
+                        node.index(),
+                        index
+                    )?;
+                }
+                MigNode::Zero => {}
                 MigNode::Majority => {
-                    let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node).expect("majority node with less than three inputs");
+                    let (x_edge, y_edge, z_edge) = self
+                        .try_unwrap_majority(node)
+                        .expect("majority node with less than three inputs");
                     let (x, _) = self.graph().edge_endpoints(x_edge).unwrap();
                     let (y, _) = self.graph().edge_endpoints(y_edge).unwrap();
                     let (z, _) = self.graph().edge_endpoints(z_edge).unwrap();
-                    let x_is_inverted = *self.graph().edge_weight(x_edge).expect("edge from x to node has no weight");
-                    let y_is_inverted = *self.graph().edge_weight(y_edge).expect("edge from y to node has no weight");
-                    let z_is_inverted = *self.graph().edge_weight(z_edge).expect("edge from z to node has no weight");
-                    if (x == self.zero && x_is_inverted) || (y == self.zero && y_is_inverted) || (z == self.zero && z_is_inverted) {
+                    let x_is_inverted = *self
+                        .graph()
+                        .edge_weight(x_edge)
+                        .expect("edge from x to node has no weight");
+                    let y_is_inverted = *self
+                        .graph()
+                        .edge_weight(y_edge)
+                        .expect("edge from y to node has no weight");
+                    let z_is_inverted = *self
+                        .graph()
+                        .edge_weight(z_edge)
+                        .expect("edge from z to node has no weight");
+                    if (x == self.zero && x_is_inverted)
+                        || (y == self.zero && y_is_inverted)
+                        || (z == self.zero && z_is_inverted)
+                    {
                         writeln!(f, "{} [label=\"OR {0}\"];", node.index())?;
-                    } else if (x == self.zero && !x_is_inverted) || (y == self.zero && !y_is_inverted) || (z == self.zero && !z_is_inverted) {
+                    } else if (x == self.zero && !x_is_inverted)
+                        || (y == self.zero && !y_is_inverted)
+                        || (z == self.zero && !z_is_inverted)
+                    {
                         writeln!(f, "{} [label=\"AND {0}\"];", node.index())?;
                     } else {
                         writeln!(f, "{} [label=\"Majority {0}\"];", node.index())?;
                     }
-                },
+                }
             }
         }
 
@@ -121,21 +162,29 @@ impl Mig {
             match self.graph[to] {
                 MigNode::Input(_) | MigNode::Output(_) | MigNode::Majority => {
                     write!(f, "{} -> {}", to.index(), from.index())?;
-                },
+                }
                 MigNode::Zero => {
                     writeln!(f, "z{} [label=\"\", shape=point];", from.index())?;
                     write!(f, "z{} -> {0}", from.index())?;
-                },
+                }
             }
 
-            writeln!(f, " {};", if self.graph[edge] { "[dir=both,arrowtail=odot]" } else { "" })?;
+            writeln!(
+                f,
+                " {};",
+                if self.graph[edge] {
+                    "[dir=both,arrowtail=odot]"
+                } else {
+                    ""
+                }
+            )?;
         }
 
         writeln!(f, "}}")
     }
 
     #[must_use]
-    pub fn graph(&self) -> &StableGraph<MigNode, bool> {
+    pub const fn graph(&self) -> &StableGraph<MigNode, bool> {
         &self.graph
     }
 
@@ -149,20 +198,36 @@ impl Mig {
     }
 
     #[must_use]
-    pub fn try_unwrap_majority(&self, node: NodeIndex) -> Option<(EdgeIndex, EdgeIndex, EdgeIndex)> {
+    pub fn try_unwrap_majority(
+        &self,
+        node: NodeIndex,
+    ) -> Option<(EdgeIndex, EdgeIndex, EdgeIndex)> {
         match self.graph[node] {
             MigNode::Input(_) | MigNode::Output(_) | MigNode::Zero => None,
             MigNode::Majority => {
                 let mut iter = self.graph.edges_directed(node, Incoming);
                 match (iter.next(), iter.next(), iter.next()) {
                     (Some(x), Some(y), Some(z)) => {
-                        assert_eq!(iter.next(), None, "majority gate with more than three inputs");
+                        assert_eq!(
+                            iter.next(),
+                            None,
+                            "majority gate with more than three inputs"
+                        );
                         Some((x.id(), y.id(), z.id()))
-                    },
-                    (Some(x), Some(y), None) => panic!("majority gate {} has two inputs: {} and {}", node.index(), x.id().index(), y.id().index()),
-                    (Some(x), None, None) => panic!("majority gate {} has one input: {}", node.index(), x.id().index()),
+                    }
+                    (Some(x), Some(y), None) => panic!(
+                        "majority gate {} has two inputs: {} and {}",
+                        node.index(),
+                        x.id().index(),
+                        y.id().index()
+                    ),
+                    (Some(x), None, None) => panic!(
+                        "majority gate {} has one input: {}",
+                        node.index(),
+                        x.id().index()
+                    ),
                     (None, None, None) => panic!("majority gate {} has zero inputs", node.index()),
-                    (_, _, _) => unreachable!()
+                    (_, _, _) => unreachable!(),
                 }
             }
         }
@@ -210,5 +275,4 @@ mod tests {
         assert_eq!(mig.try_unwrap_majority(node_output), None);
         assert_eq!(mig.try_unwrap_majority(node_zero), None);
     }
-
 }

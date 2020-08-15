@@ -1,7 +1,7 @@
 use crate::mig4;
 
-use petgraph::prelude::*;
 use mig4::MigNode;
+use petgraph::prelude::*;
 
 impl mig4::Mig {
     fn transform_majority(&mut self, node: NodeIndex) -> Option<()> {
@@ -21,7 +21,8 @@ impl mig4::Mig {
                     // M(x, x, y) => x
                     while let Some((edge, output)) = outputs.next(self.graph()) {
                         let inverted = self.graph_mut().remove_edge(edge).unwrap();
-                        self.graph_mut().add_edge(x, output, x_is_inverted ^ inverted);
+                        self.graph_mut()
+                            .add_edge(x, output, x_is_inverted ^ inverted);
                     }
                     self.graph_mut().remove_node(node);
                     return Some(());
@@ -29,7 +30,8 @@ impl mig4::Mig {
                     // M(x, x', y) => y
                     while let Some((edge, output)) = outputs.next(self.graph()) {
                         let inverted = self.graph_mut().remove_edge(edge).unwrap();
-                        self.graph_mut().add_edge(z, output,  z_is_inverted ^ inverted);
+                        self.graph_mut()
+                            .add_edge(z, output, z_is_inverted ^ inverted);
                     }
                     self.graph_mut().remove_node(node);
                     return Some(());
@@ -39,8 +41,8 @@ impl mig4::Mig {
         };
 
         majority(x, y, z)
-        .or_else(|| majority(y, z, x))
-        .or_else(|| majority(z, x, y))
+            .or_else(|| majority(y, z, x))
+            .or_else(|| majority(z, x, y))
     }
 
     /// Transform `M(x, u, M(y, u, z))` to `M(z, u, M(y, u, x))`
@@ -82,12 +84,24 @@ impl mig4::Mig {
             let b_is_inverted = self.graph()[b_edge];
             let c_is_inverted = self.graph()[c_edge];
             let d_is_inverted = self.graph()[d_edge];
-        
-            if x_is_inverted || y_is_inverted || a_is_inverted || b_is_inverted || c_is_inverted || d_is_inverted {
+
+            if x_is_inverted
+                || y_is_inverted
+                || a_is_inverted
+                || b_is_inverted
+                || c_is_inverted
+                || d_is_inverted
+            {
                 return None;
             }
 
-            let (shared, unique) = classify_inputs((x, x_is_inverted), (y, y_is_inverted), (b, b_is_inverted ^ a_is_inverted), (c, c_is_inverted ^ a_is_inverted), (d, d_is_inverted ^ a_is_inverted));
+            let (shared, unique) = classify_inputs(
+                (x, x_is_inverted),
+                (y, y_is_inverted),
+                (b, b_is_inverted ^ a_is_inverted),
+                (c, c_is_inverted ^ a_is_inverted),
+                (d, d_is_inverted ^ a_is_inverted),
+            );
 
             if shared.len() != 1 || unique.len() != 3 {
                 return None;
@@ -119,8 +133,8 @@ impl mig4::Mig {
         };
 
         associativity(x_edge, y_edge, z_edge)
-        .or_else(|| associativity(y_edge, z_edge, x_edge))
-        .or_else(|| associativity(z_edge, x_edge, y_edge))
+            .or_else(|| associativity(y_edge, z_edge, x_edge))
+            .or_else(|| associativity(z_edge, x_edge, y_edge))
     }
 
     /// Transform `M(M(x, y, u), M(x, y, v), z)` into `M(x, y, M(u, v, z))`.
@@ -150,7 +164,12 @@ impl mig4::Mig {
         let (y, _) = self.graph().edge_endpoints(y_edge).unwrap();
         let (z, _) = self.graph().edge_endpoints(z_edge).unwrap();
 
-        let mut distributivity = |b_edge: EdgeIndex, c_edge: EdgeIndex, z_edge: EdgeIndex, b: NodeIndex, c: NodeIndex, z: NodeIndex| {
+        let mut distributivity = |b_edge: EdgeIndex,
+                                  c_edge: EdgeIndex,
+                                  z_edge: EdgeIndex,
+                                  b: NodeIndex,
+                                  c: NodeIndex,
+                                  z: NodeIndex| {
             //         j
             //    /    |    \
             //   b     c     z
@@ -180,7 +199,14 @@ impl mig4::Mig {
             let y2_is_inverted = self.graph()[y2_edge];
             let v_is_inverted = self.graph()[v_edge];
 
-            let (shared, unique) = classify_inputs((x1, x1_is_inverted ^ b_is_inverted), (y1, y1_is_inverted ^ b_is_inverted), (u, u_is_inverted ^ b_is_inverted), (x2, x2_is_inverted ^ c_is_inverted), (y2, y2_is_inverted ^ c_is_inverted), (v, v_is_inverted ^ c_is_inverted));
+            let (shared, unique) = classify_inputs(
+                (x1, x1_is_inverted ^ b_is_inverted),
+                (y1, y1_is_inverted ^ b_is_inverted),
+                (u, u_is_inverted ^ b_is_inverted),
+                (x2, x2_is_inverted ^ c_is_inverted),
+                (y2, y2_is_inverted ^ c_is_inverted),
+                (v, v_is_inverted ^ c_is_inverted),
+            );
 
             if shared.len() != 2 || unique.len() != 2 {
                 return None;
@@ -220,15 +246,24 @@ impl mig4::Mig {
         };
 
         distributivity(x_edge, y_edge, z_edge, x, y, z)
-        .or_else(|| distributivity(y_edge, z_edge, x_edge, y, z, x))
-        .or_else(|| distributivity(z_edge, x_edge, y_edge, z, x, y))
+            .or_else(|| distributivity(y_edge, z_edge, x_edge, y, z, x))
+            .or_else(|| distributivity(z_edge, x_edge, y_edge, z, x, y))
     }
 
     fn transform_inverters(&mut self, node: NodeIndex) -> Option<()> {
         let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node)?;
-        let x_is_inverted = *self.graph().edge_weight(x_edge).expect("edge from x to node has no weight");
-        let y_is_inverted = *self.graph().edge_weight(y_edge).expect("edge from y to node has no weight");
-        let z_is_inverted = *self.graph().edge_weight(z_edge).expect("edge from z to node has no weight");
+        let x_is_inverted = *self
+            .graph()
+            .edge_weight(x_edge)
+            .expect("edge from x to node has no weight");
+        let y_is_inverted = *self
+            .graph()
+            .edge_weight(y_edge)
+            .expect("edge from y to node has no weight");
+        let z_is_inverted = *self
+            .graph()
+            .edge_weight(z_edge)
+            .expect("edge from z to node has no weight");
 
         let mut inverter_propagation = |x_is_inverted: bool, y_is_inverted: bool| {
             if x_is_inverted && y_is_inverted {
@@ -244,14 +279,14 @@ impl mig4::Mig {
                     *inverted = !*inverted;
                 }
 
-                return Some(())
+                return Some(());
             }
             None
         };
 
         inverter_propagation(x_is_inverted, y_is_inverted)
-        .or_else(|| inverter_propagation(y_is_inverted, z_is_inverted))
-        .or_else(|| inverter_propagation(z_is_inverted, x_is_inverted))
+            .or_else(|| inverter_propagation(y_is_inverted, z_is_inverted))
+            .or_else(|| inverter_propagation(z_is_inverted, x_is_inverted))
     }
 
     pub fn cleanup_graph(&mut self) {
@@ -263,13 +298,17 @@ impl mig4::Mig {
             did_something = false;
 
             let indices = self.graph().node_indices().collect::<Vec<_>>();
-            let inputs = self.graph().externals(Outgoing).filter(|node| {
-                if let MigNode::Majority = self.graph()[*node] {
-                    false
-                } else {
-                    true
-                }
-            }).collect::<Vec<_>>();
+            let inputs = self
+                .graph()
+                .externals(Outgoing)
+                .filter(|node| {
+                    if let MigNode::Majority = self.graph()[*node] {
+                        false
+                    } else {
+                        true
+                    }
+                })
+                .collect::<Vec<_>>();
 
             for node in indices.into_iter().filter(|node| !inputs.contains(node)) {
                 if self.graph().neighbors_directed(node, Outgoing).count() == 0 {
@@ -284,7 +323,8 @@ impl mig4::Mig {
         nodes = self.graph().node_count();
 
         // Attempt to deduplicate the graph.
-        let mut hash: std::collections::HashMap<[(NodeIndex<u32>, bool); 3], NodeIndex> = std::collections::HashMap::new();
+        let mut hash: std::collections::HashMap<[(NodeIndex<u32>, bool); 3], NodeIndex> =
+            std::collections::HashMap::new();
 
         let node_indices = self.graph().node_indices().collect::<Vec<_>>();
         for node in node_indices {
@@ -308,7 +348,11 @@ impl mig4::Mig {
                     continue;
                 }
 
-                let children_inverted = [(x, !x_is_inverted), (y, !y_is_inverted), (z, !z_is_inverted)];
+                let children_inverted = [
+                    (x, !x_is_inverted),
+                    (y, !y_is_inverted),
+                    (z, !z_is_inverted),
+                ];
 
                 if let Some(dest) = hash.get(&children_inverted) {
                     let mut outputs = self.graph().neighbors_directed(node, Outgoing).detach();
@@ -324,7 +368,10 @@ impl mig4::Mig {
             }
         }
 
-        eprintln!("GC: deduplicated {} nodes", nodes - self.graph().node_count());
+        eprintln!(
+            "GC: deduplicated {} nodes",
+            nodes - self.graph().node_count()
+        );
     }
 
     pub fn print_stats(&self) {
@@ -342,7 +389,7 @@ impl mig4::Mig {
             let counts = petgraph::algo::dijkstra(self.graph(), output, None, |_| 1);
 
             for input in &inputs {
-                if let Some(depth) = counts.get(&input) {
+                if let Some(depth) = counts.get(input) {
                     if *depth > max_depth {
                         max_depth = *depth;
                         max_depth_input = input.index();
@@ -355,7 +402,11 @@ impl mig4::Mig {
         }
 
         eprintln!("MIG: maximum gate depth is {} between input {} and output {}, average gate depth is {:.1}", max_depth, max_depth_input, max_depth_output, f64::from(sum_depth) / f64::from(sum_outputs));
-        eprintln!("MIG: there are {} nodes and {} edges in the graph", self.graph().node_count(), self.graph().edge_count());
+        eprintln!(
+            "MIG: there are {} nodes and {} edges in the graph",
+            self.graph().node_count(),
+            self.graph().edge_count()
+        );
     }
 
     pub fn optimise_area(&mut self) {
@@ -402,7 +453,7 @@ impl mig4::Mig {
                         nodes.push(node);
                     }
                 }
-    
+
                 for node in nodes {
                     did_something |= graph.transform_distributivity(node).is_some();
                 }
@@ -454,7 +505,7 @@ impl mig4::Mig {
 
 #[cfg(test)]
 mod tests {
-    use super::{MigNode, Outgoing, mig4};
+    use super::{mig4, MigNode, Outgoing};
 
     macro_rules! assert_edge {
         ($graph:expr, $a:expr, $b:expr, $weight:expr) => {
@@ -1151,7 +1202,7 @@ mod tests {
             .add_edge(node_input_y, node_majority_outer, false);
         mig.graph_mut()
             .add_edge(node_majority_inner, node_majority_outer, false);
-        
+
         mig.to_graphviz("graph.dot");
 
         mig.transform_relevance(node_majority_outer)

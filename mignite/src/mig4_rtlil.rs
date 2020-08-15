@@ -70,7 +70,9 @@ end
 "
         )?;
 
-        let wires = self.graph().node_indices()
+        let wires = self
+            .graph()
+            .node_indices()
             .filter_map(|node| {
                 let mig_node = &self.graph()[node];
                 let (wire_type, index) = match mig_node {
@@ -80,7 +82,7 @@ end
                 };
 
                 let ident = if let Some(symbol) = self.symbol(*index) {
-                    let (symbol, bit) = to_symbol_and_bit(&symbol);
+                    let (symbol, bit) = to_symbol_and_bit(symbol);
 
                     (symbol.to_string(), bit)
                 } else {
@@ -105,7 +107,7 @@ end
                 MigNode::Majority | MigNode::Output(_) => {
                     writeln!(writer, "  wire $node${}", node.index())?;
                 }
-                _ => {},
+                _ => {}
             }
         }
         let mut wires_written = HashSet::new();
@@ -140,10 +142,22 @@ end
                 match wire_type {
                     WireType::Input => {
                         writeln!(writer, "  wire width 1 $node${}", node.index())?;
-                        writeln!(writer, "  connect $node${} \\{} [{}]", node.index(), symbol, bit)?;
+                        writeln!(
+                            writer,
+                            "  connect $node${} \\{} [{}]",
+                            node.index(),
+                            symbol,
+                            bit
+                        )?;
                     }
                     WireType::Output => {
-                        writeln!(writer, "  connect \\{} [{}] $node${}", symbol, bit, node.index())?;
+                        writeln!(
+                            writer,
+                            "  connect \\{} [{}] $node${}",
+                            symbol,
+                            bit,
+                            node.index()
+                        )?;
                     }
                 }
             }
@@ -186,7 +200,7 @@ end
                     writeln!(writer, "    connect \\C {}", c_ident)?;
                     writeln!(writer, "    connect \\Y $node${}", node.index())?;
                     writeln!(writer, "  end")?;
-                },
+                }
                 MigNode::Output(_) => {
                     let mut edges = self.graph().edges_directed(node, Incoming);
                     let edge_driver = edges.next().expect("output to be driven");
@@ -196,8 +210,8 @@ end
                     let node_driver = edge_driver.target();
 
                     writeln!(writer, "  connect $node${} {}", node_driver.index(), ident)?;
-                },
-                _ => {},
+                }
+                _ => {}
             }
         }
         writeln!(writer, "end")?;
