@@ -68,37 +68,38 @@ impl mig4::Mig {
 
         let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node)?;
 
-        let mut associativity = |x_edge: EdgeIndex, y_edge: EdgeIndex, a_edge: EdgeIndex| {
-            let x = self.edge_source(x_edge);
-            let y = self.edge_source(y_edge);
-            let a = self.edge_source(a_edge);
-            let x_is_inverted = self.is_edge_inverted(x_edge);
-            let y_is_inverted = self.is_edge_inverted(y_edge);
-            let a_is_inverted = self.is_edge_inverted(a_edge);
-            let (b_edge, c_edge, d_edge) = self.try_unwrap_majority(a)?;
-            let b = self.edge_source(b_edge);
-            let c = self.edge_source(c_edge);
-            let d = self.edge_source(d_edge);
-            let b_is_inverted = self.is_edge_inverted(b_edge);
-            let c_is_inverted = self.is_edge_inverted(c_edge);
-            let d_is_inverted = self.is_edge_inverted(d_edge);
+        let mut associativity = |outer1_edge: EdgeIndex, outer2_edge: EdgeIndex, outer3_edge: EdgeIndex| {
+            let outer1 = self.edge_source(outer1_edge);
+            let outer2 = self.edge_source(outer2_edge);
+            let outer3 = self.edge_source(outer3_edge);
+            let outer1_is_inverted = self.is_edge_inverted(outer1_edge);
+            let outer2_is_inverted = self.is_edge_inverted(outer2_edge);
+            let outer3_is_inverted = self.is_edge_inverted(outer3_edge);
 
-            if x_is_inverted
-                || y_is_inverted
-                || a_is_inverted
-                || b_is_inverted
-                || c_is_inverted
-                || d_is_inverted
+            let (inner1_edge, inner2_edge, inner3_edge) = self.try_unwrap_majority(outer3)?;
+            let inner1 = self.edge_source(inner1_edge);
+            let inner2 = self.edge_source(inner2_edge);
+            let inner3 = self.edge_source(inner3_edge);
+            let inner1_is_inverted = self.is_edge_inverted(inner1_edge);
+            let inner2_is_inverted = self.is_edge_inverted(inner2_edge);
+            let inner3_is_inverted = self.is_edge_inverted(inner3_edge);
+
+            if outer1_is_inverted
+                || outer2_is_inverted
+                || outer3_is_inverted
+                || inner1_is_inverted
+                || inner2_is_inverted
+                || inner3_is_inverted
             {
                 return None;
             }
 
             let (shared, unique) = classify_inputs(
-                (x, x_is_inverted),
-                (y, y_is_inverted),
-                (b, b_is_inverted ^ a_is_inverted),
-                (c, c_is_inverted ^ a_is_inverted),
-                (d, d_is_inverted ^ a_is_inverted),
+                (outer1, outer1_is_inverted),
+                (outer2, outer2_is_inverted),
+                (inner1, inner1_is_inverted ^ outer3_is_inverted),
+                (inner2, inner2_is_inverted ^ outer3_is_inverted),
+                (inner3, inner3_is_inverted ^ outer3_is_inverted),
             );
 
             if shared.len() != 1 || unique.len() != 3 {
@@ -108,26 +109,53 @@ impl mig4::Mig {
             let mut shared_iter = shared.iter();
             let mut unique_iter = unique.iter();
 
+            // u is the shared input.
             let (u, u_is_inverted) = shared_iter.next().unwrap();
+
+            let u_is_inner = *u == inner1 || *u == inner2 || *u == inner3;
+            let u_is_outer = *u == outer1 || *u == outer2;
+
+            assert!(u_is_inner && u_is_outer);
 
             // TODO: this needs to figure out which input is in the outer gate.
             let (x, x_is_inverted) = unique_iter.next().unwrap();
             let (y, y_is_inverted) = unique_iter.next().unwrap();
             let (z, z_is_inverted) = unique_iter.next().unwrap();
 
-            let e = self.add_node(MigNode::Majority);
-            self.add_edge(*u, e, *u_is_inverted);
-            self.add_edge(*x, e, *x_is_inverted);
-            self.add_edge(*y, e, *y_is_inverted);
+            let mut rewrite = |x: &NodeIndex, x_is_inverted: &bool, x_edge: EdgeIndex, y: &NodeIndex, y_is_inverted: &bool, _y_edge: EdgeIndex, z: &NodeIndex, z_is_inverted: &bool, _z_edge: EdgeIndex| {
+                let x_is_inner = *x == inner1 || *x == inner2 || *x == inner3;
+                let y_is_inner = *y == inner1 || *y == inner2 || *y == inner3;
+                let z_is_inner = *z == inner1 || *z == inner2 || *z == inner3;
 
-            self.remove_edge(a_edge);
-            self.remove_edge(x_edge);
-            self.add_edge(e, node, false);
-            self.add_edge(*z, node, *z_is_inverted);
+                if x_is_inner || !y_is_inner || !z_is_inner || x_edge == outer3_edge {
+                    return None;
+                }
 
-            //eprintln!("{}: M({}, {}, M({}, {}, {}))", node.index(), x.index(), z.index());
+                //  node
+                // / | \
+                // x u outer3
+                //     / | \
+                //     y u z
 
-            Some(())
+                let e = self.add_node(MigNode::Majority);
+                self.add_edge(*u, e, *u_is_inverted);
+                self.add_edge(*x, e, *x_is_inverted);
+                self.add_edge(*y, e, *y_is_inverted);
+
+                self.remove_edge(outer3_edge);
+                self.remove_edge(x_edge);
+                self.add_edge(e, node, false);
+                self.add_edge(*z, node, *z_is_inverted);
+
+                eprintln!("swapped {} with {}", x.index(), z.index());
+
+                Some(())
+            };
+
+            // When all you have is a hammer to deal with commutativity...
+            rewrite(x, x_is_inverted, x_edge, y, y_is_inverted, y_edge, z, z_is_inverted, z_edge)
+            .or_else(|| rewrite(y, y_is_inverted, y_edge, z, z_is_inverted, z_edge, x, x_is_inverted, x_edge))
+            .or_else(|| rewrite(z, z_is_inverted, z_edge, x, x_is_inverted, x_edge, y, y_is_inverted, y_edge))
         };
 
         associativity(x_edge, y_edge, z_edge)

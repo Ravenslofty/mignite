@@ -87,11 +87,11 @@ end
                     (symbol.to_string(), bit)
                 } else {
                     let wire_type_str = match wire_type {
-                        WireType::Input => "input",
-                        WireType::Output => "output",
+                        WireType::Input => "i",
+                        WireType::Output => "o",
                     };
 
-                    (format!("{}${}", wire_type_str, node.index()), 0)
+                    (format!("${}{:02}", wire_type_str, node.index()), 0)
                 };
 
                 Some((node, ident, wire_type))

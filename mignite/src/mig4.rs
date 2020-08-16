@@ -206,7 +206,7 @@ impl Mig {
     }
 
     pub fn remove_edge(&mut self, edge: EdgeIndex) -> bool {
-        self.graph.remove_edge(edge).unwrap()
+        self.graph.remove_edge(edge).unwrap_or_else(|| panic!("tried to remove edge {} twice", edge.index()))
     }
 
     #[must_use]
