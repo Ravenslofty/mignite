@@ -147,7 +147,7 @@ impl mig4::Mig {
                 self.add_edge(e, node, false);
                 self.add_edge(*z, node, *z_is_inverted);
 
-                eprintln!("swapped {} with {}", x.index(), z.index());
+                //eprintln!("swapped {} with {}", x.index(), z.index());
 
                 Some(())
             };
@@ -434,7 +434,7 @@ impl mig4::Mig {
         // Helper functions.
         let majority = |graph: &mut Self| {
             let mut did_something = true;
-            eprintln!("   \u{3a9}.M (rewriting gates dominated by a node)");
+            eprintln!("   Majority:\t\trewriting gates dominated by a node");
             while did_something {
                 did_something = false;
                 let mut dfs = DfsPostOrder::empty(graph.graph());
@@ -455,7 +455,7 @@ impl mig4::Mig {
 
         let distributivity = |graph: &mut Self| {
             let mut did_something = true;
-            eprintln!("   \u{3a9}.D (rewriting gates with common children)");
+            eprintln!("   Distributivity:\trewriting gates with common children");
             while did_something {
                 did_something = false;
                 let mut dfs = DfsPostOrder::empty(graph.graph());
@@ -475,7 +475,7 @@ impl mig4::Mig {
         };
 
         let associativity = |graph: &mut Self| {
-            eprintln!("   \u{3a9}.A (swapping terms across gates)");
+            eprintln!("   Associativity:\tswapping terms across gates");
             // Because associativity is a reversible transformation, running it multiple times infinite-loops.
             let mut dfs = DfsPostOrder::empty(graph.graph());
             let mut nodes = Vec::new();
@@ -490,8 +490,6 @@ impl mig4::Mig {
             for node in nodes {
                 graph.transform_associativity(node);
             }
-
-            graph.cleanup_graph();
         };
 
         // Explore tree.
@@ -503,16 +501,17 @@ impl mig4::Mig {
 
             majority(self);
             distributivity(self);
-            associativity(self);
+            //associativity(self);
             majority(self);
             distributivity(self);
+
+            self.cleanup_graph();
 
             if node_count == self.node_count() && edge_count == self.edge_count() {
                 break;
             }
         }
 
-        self.cleanup_graph();
         self.print_stats();
     }
 }

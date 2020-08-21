@@ -163,12 +163,20 @@ end
             }
         }
 
+        let mut node_inverter_hash: std::collections::HashMap<(NodeIndex, bool), String> = std::collections::HashMap::new();
+
         let mut uid = 0;
         let mut prep_edge = |writer: &mut T, edge| -> io::Result<String> {
             let from = self.edge_source(edge);
-            let mut ident = format!("$node${}", from.index());
 
             let is_inverted = self.is_edge_inverted(edge);
+
+            if let Some(ident) = node_inverter_hash.get(&(from, is_inverted)) {
+                return Ok(ident.clone())
+            }
+
+            let mut ident = format!("$node${}", from.index());
+
             if is_inverted {
                 let inv_ident = format!("{}${}$n", ident, uid);
 
@@ -181,6 +189,8 @@ end
                 uid += 1;
                 ident = inv_ident;
             }
+
+            node_inverter_hash.insert((from, is_inverted), ident.clone());
 
             Ok(ident)
         };

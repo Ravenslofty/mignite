@@ -1,7 +1,7 @@
 use mignite::mig4::Mig;
 
 fn main() {
-    let mut mig = Mig::from_aiger("add_15_15.aag");
+    let mut mig = Mig::from_aiger("netlist.aag");
 
     //mig.to_graphviz("before.dot").unwrap();
 
