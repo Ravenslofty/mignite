@@ -23,17 +23,15 @@ impl mig4::Mig {
                         let inverted = self.remove_edge(edge);
                         self.add_edge(x, output, x_is_inverted ^ inverted);
                     }
-                    self.remove_node(node);
-                    return Some(());
                 } else {
                     // M(x, x', y) => y
                     while let Some((edge, output)) = outputs.next(self.graph()) {
                         let inverted = self.remove_edge(edge);
                         self.add_edge(z, output, z_is_inverted ^ inverted);
                     }
-                    self.remove_node(node);
-                    return Some(());
                 }
+                self.remove_node(node);
+                return Some(());
             }
             None
         };
@@ -307,38 +305,6 @@ impl mig4::Mig {
     }
 
     pub fn cleanup_graph(&mut self) {
-        let mut nodes = self.node_count();
-
-        // Look for orphan nodes (nodes not connected to an output).
-        let mut did_something = true;
-        while did_something {
-            did_something = false;
-
-            let indices = self.graph().node_indices().collect::<Vec<_>>();
-            let inputs = self
-                .graph()
-                .externals(Outgoing)
-                .filter(|node| {
-                    if let MigNode::Majority = self.node_type(*node) {
-                        false
-                    } else {
-                        true
-                    }
-                })
-                .collect::<Vec<_>>();
-
-            for node in indices.into_iter().filter(|node| !inputs.contains(node)) {
-                if self.graph().neighbors_directed(node, Outgoing).count() == 0 {
-                    self.remove_node(node);
-                    did_something = true;
-                }
-            }
-        }
-
-        eprintln!("GC: removed {} nodes", nodes - self.node_count());
-
-        nodes = self.node_count();
-
         // Attempt to deduplicate the graph.
         let mut hash: std::collections::HashMap<[(NodeIndex<u32>, bool); 3], NodeIndex> =
             std::collections::HashMap::new();
@@ -361,7 +327,6 @@ impl mig4::Mig {
                         let inverted = self.remove_edge(edge);
                         self.add_edge(*dest, output, inverted);
                     }
-                    self.remove_node(node);
                     continue;
                 }
 
@@ -372,12 +337,11 @@ impl mig4::Mig {
                 ];
 
                 if let Some(dest) = hash.get(&children_inverted) {
-                    let mut outputs = self.graph().neighbors_directed(node, Outgoing).detach();
+                    let mut outputs = self.output_edges(node).detach();
                     while let Some((edge, output)) = outputs.next(self.graph()) {
                         let inverted = self.remove_edge(edge);
                         self.add_edge(*dest, output, !inverted);
                     }
-                    self.remove_node(node);
                     continue;
                 }
 
@@ -385,7 +349,22 @@ impl mig4::Mig {
             }
         }
 
-        eprintln!("GC: deduplicated {} nodes", nodes - self.node_count());
+        // Look for orphan nodes (nodes not connected to an output).
+        let mut did_something = true;
+        while did_something {
+            #[allow(clippy::shadow_unrelated)]
+            let nodes = self.node_count();
+
+            *self.graph_mut() = self.graph().filter_map(|node, kind| {
+                if *kind == MigNode::Majority && self.graph().neighbors_directed(node, Outgoing).count() == 0 {
+                    None
+                } else {
+                    Some(*kind)
+                }
+            }, |_edge, kind| Some(*kind));
+
+            did_something = self.node_count() < nodes;
+        }
     }
 
     pub fn print_stats(&self) {
@@ -397,7 +376,7 @@ impl mig4::Mig {
         let mut sum_outputs = 0;
 
         let inputs = self.graph().externals(Outgoing).collect::<Vec<_>>();
-        let outputs = self.graph().externals(Incoming).collect::<Vec<_>>();
+        let outputs = self.graph().externals(Incoming);
 
         for output in outputs {
             let counts = petgraph::algo::dijkstra(self.graph(), output, None, |_| 1);
@@ -502,8 +481,8 @@ impl mig4::Mig {
             majority(self);
             distributivity(self);
             //associativity(self);
-            majority(self);
-            distributivity(self);
+            //majority(self);
+            //distributivity(self);
 
             self.cleanup_graph();
 
@@ -511,7 +490,6 @@ impl mig4::Mig {
                 break;
             }
         }
-
         self.print_stats();
     }
 }
