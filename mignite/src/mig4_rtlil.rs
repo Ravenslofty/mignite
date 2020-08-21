@@ -199,17 +199,37 @@ end
             let mig_node = &self.node_type(node);
             match mig_node {
                 MigNode::Majority => {
-                    let (a_edge, b_edge, c_edge) = self.try_unwrap_majority(node).unwrap();
-                    let a_ident = prep_edge(&mut writer, a_edge)?;
-                    let b_ident = prep_edge(&mut writer, b_edge)?;
-                    let c_ident = prep_edge(&mut writer, c_edge)?;
+                    if let Some((a_edge, b_edge)) = self.try_unwrap_and(node) {
+                        let a_ident = prep_edge(&mut writer, a_edge)?;
+                        let b_ident = prep_edge(&mut writer, b_edge)?;
 
-                    writeln!(writer, "  cell \\majority $majority${}", node.index())?;
-                    writeln!(writer, "    connect \\A {}", a_ident)?;
-                    writeln!(writer, "    connect \\B {}", b_ident)?;
-                    writeln!(writer, "    connect \\C {}", c_ident)?;
-                    writeln!(writer, "    connect \\Y $node${}", node.index())?;
-                    writeln!(writer, "  end")?;
+                        writeln!(writer, "  cell $_AND_ $majority${}", node.index())?;
+                        writeln!(writer, "    connect \\A {}", a_ident)?;
+                        writeln!(writer, "    connect \\B {}", b_ident)?;
+                        writeln!(writer, "    connect \\Y $node${}", node.index())?;
+                        writeln!(writer, "  end")?;
+                    } else if let Some((a_edge, b_edge)) = self.try_unwrap_or(node) {
+                        let a_ident = prep_edge(&mut writer, a_edge)?;
+                        let b_ident = prep_edge(&mut writer, b_edge)?;
+
+                        writeln!(writer, "  cell $_OR_ $majority${}", node.index())?;
+                        writeln!(writer, "    connect \\A {}", a_ident)?;
+                        writeln!(writer, "    connect \\B {}", b_ident)?;
+                        writeln!(writer, "    connect \\Y $node${}", node.index())?;
+                        writeln!(writer, "  end")?;
+                    } else {
+                        let (a_edge, b_edge, c_edge) = self.try_unwrap_majority(node).unwrap();
+                        let a_ident = prep_edge(&mut writer, a_edge)?;
+                        let b_ident = prep_edge(&mut writer, b_edge)?;
+                        let c_ident = prep_edge(&mut writer, c_edge)?;
+    
+                        writeln!(writer, "  cell \\majority $majority${}", node.index())?;
+                        writeln!(writer, "    connect \\A {}", a_ident)?;
+                        writeln!(writer, "    connect \\B {}", b_ident)?;
+                        writeln!(writer, "    connect \\C {}", c_ident)?;
+                        writeln!(writer, "    connect \\Y $node${}", node.index())?;
+                        writeln!(writer, "  end")?;
+                    }
                 }
                 MigNode::Output(_) => {
                     let mut edges = self.graph().edges_directed(node, Incoming);

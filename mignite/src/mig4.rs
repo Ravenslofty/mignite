@@ -277,6 +277,48 @@ impl Mig {
             }
         }
     }
+
+    #[must_use]
+    pub fn try_unwrap_and(&self, node: NodeIndex) -> Option<(EdgeIndex, EdgeIndex)> {
+        let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node)?;
+        let x = self.edge_source(x_edge);
+        let y = self.edge_source(y_edge);
+        let z = self.edge_source(z_edge);
+        let x_is_inverted = self.is_edge_inverted(x_edge);
+        let y_is_inverted = self.is_edge_inverted(y_edge);
+        let z_is_inverted = self.is_edge_inverted(z_edge);
+
+        if x == self.zero && !x_is_inverted {
+            Some((y_edge, z_edge))
+        } else if y == self.zero && !y_is_inverted {
+            Some((x_edge, z_edge))
+        } else if z == self.zero && !z_is_inverted {
+            Some((x_edge, y_edge))
+        } else {
+            None
+        }
+    }
+
+    #[must_use]
+    pub fn try_unwrap_or(&self, node: NodeIndex) -> Option<(EdgeIndex, EdgeIndex)> {
+        let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node)?;
+        let x = self.edge_source(x_edge);
+        let y = self.edge_source(y_edge);
+        let z = self.edge_source(z_edge);
+        let x_is_inverted = self.is_edge_inverted(x_edge);
+        let y_is_inverted = self.is_edge_inverted(y_edge);
+        let z_is_inverted = self.is_edge_inverted(z_edge);
+
+        if x == self.zero && x_is_inverted {
+            Some((y_edge, z_edge))
+        } else if y == self.zero && y_is_inverted {
+            Some((x_edge, z_edge))
+        } else if z == self.zero && z_is_inverted {
+            Some((x_edge, y_edge))
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]
