@@ -16,19 +16,16 @@ impl mig4::Mig {
             let z_is_inverted = self.is_edge_inverted(z_edge);
 
             if x == y {
-                let mut outputs = self.graph().neighbors_directed(node, Outgoing).detach();
-                if x_is_inverted == y_is_inverted {
-                    // M(x, x, y) => x
-                    while let Some((edge, output)) = outputs.next(self.graph()) {
-                        let inverted = self.remove_edge(edge);
+                let mut outputs = self.output_edges(node).detach();
+                while let Some((edge, output)) = outputs.next(self.graph()) {
+                    let inverted = self.remove_edge(edge);
+                    if x_is_inverted == y_is_inverted {
+                        // M(x, x, y) => x
                         self.add_edge(x, output, x_is_inverted ^ inverted);
-                    }
-                } else {
-                    // M(x, x', y) => y
-                    while let Some((edge, output)) = outputs.next(self.graph()) {
-                        let inverted = self.remove_edge(edge);
+                    } else {
+                        // M(x, x', y) => y
                         self.add_edge(z, output, z_is_inverted ^ inverted);
-                    }
+                    }   
                 }
                 self.remove_node(node);
                 return Some(());
@@ -304,6 +301,72 @@ impl mig4::Mig {
             .or_else(|| inverter_propagation(z_is_inverted, x_is_inverted))
     }
 
+    pub fn transform_relevance(&mut self, node: NodeIndex) -> Option<()> {
+        let (x_edge, y_edge, z_edge) = self.try_unwrap_majority(node)?;
+
+        let mut relevance = |x_edge: EdgeIndex, y_edge: EdgeIndex, z_edge: EdgeIndex| {
+            let mut x_is_inverted = self.is_edge_inverted(x_edge);
+            let mut y_is_inverted = self.is_edge_inverted(y_edge);
+            let z_is_inverted = self.is_edge_inverted(z_edge);
+            let mut x = self.edge_source(x_edge);
+            let mut y = self.edge_source(y_edge);
+            let z = self.edge_source(z_edge);
+
+            if self.node_type(x) == MigNode::Zero {
+                if self.node_type(y) == MigNode::Zero {
+                    return None;
+                }
+                std::mem::swap(&mut x, &mut y);
+                std::mem::swap(&mut x_is_inverted, &mut y_is_inverted);
+            }
+
+            let (a_edge, b_edge, c_edge) = self.try_unwrap_majority(z)?;
+            let a = self.edge_source(a_edge);
+            let b = self.edge_source(b_edge);
+            let c = self.edge_source(c_edge);
+            let a_is_inverted = self.is_edge_inverted(a_edge);
+            let b_is_inverted = self.is_edge_inverted(b_edge);
+            let c_is_inverted = self.is_edge_inverted(c_edge);
+
+            if a == x || b == x || c == x {
+                let d = self.add_node(MigNode::Majority);
+                if a == x {
+                    self.add_edge(y, d, a_is_inverted ^ x_is_inverted ^ !y_is_inverted);
+                } else {
+                    self.add_edge(a, d, a_is_inverted);
+                }
+
+                if b == x {
+                    self.add_edge(y, d, b_is_inverted ^ x_is_inverted ^ !y_is_inverted);
+                } else {
+                    self.add_edge(b, d, b_is_inverted);
+                }
+
+                if c == x {
+                    self.add_edge(y, d, c_is_inverted ^ x_is_inverted ^ !y_is_inverted);
+                } else {
+                    self.add_edge(c, d, c_is_inverted);
+                }
+
+                self.remove_edge(z_edge);
+                self.add_edge(d, node, z_is_inverted);
+
+                return Some(());
+            }
+
+            None
+        };
+
+        let mut did_something = relevance(x_edge, y_edge, z_edge).is_some();
+        did_something |= relevance(y_edge, z_edge, x_edge).is_some();
+        did_something |= relevance(z_edge, x_edge, y_edge).is_some();
+        if did_something {
+            Some(())
+        } else {
+            None
+        }
+    }
+
     pub fn cleanup_graph(&mut self) {
         // Attempt to deduplicate the graph.
         let mut hash: std::collections::HashMap<[(NodeIndex<u32>, bool); 3], NodeIndex> =
@@ -406,6 +469,7 @@ impl mig4::Mig {
         // Clean up graph orphans.
         self.print_stats();
         self.cleanup_graph();
+        self.print_stats();
 
         // Find graph inputs.
         let inputs = self.graph().externals(Incoming).collect::<Vec<_>>();
@@ -471,6 +535,27 @@ impl mig4::Mig {
             }
         };
 
+        let relevance = |graph: &mut Self| {
+            let mut did_something = true;
+            eprintln!("   Relevance:\t\trewriting don't-care terms to increase common terms");
+            while did_something {
+                did_something = false;
+                let mut dfs = DfsPostOrder::empty(graph.graph());
+                let mut nodes = Vec::new();
+                for input in inputs.clone() {
+                    dfs.move_to(input);
+                    while let Some(node) = dfs.next(graph.graph()) {
+                        did_something |= graph.transform_inverters(node).is_some();
+                        nodes.push(node);
+                    }
+                }
+
+                for node in nodes {
+                    did_something |= graph.transform_relevance(node).is_some();
+                }
+            }
+        };
+
         // Explore tree.
         for n in 0..100 {
             let node_count = self.node_count();
@@ -480,11 +565,13 @@ impl mig4::Mig {
 
             majority(self);
             distributivity(self);
+            relevance(self);
             //associativity(self);
             //majority(self);
             //distributivity(self);
 
             self.cleanup_graph();
+            self.print_stats();
 
             if node_count == self.node_count() && edge_count == self.edge_count() {
                 break;
