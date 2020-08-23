@@ -223,6 +223,11 @@ impl Mig {
     }
 
     #[must_use]
+    pub fn input_nodes(&self) -> Vec<NodeIndex> {
+        self.graph().externals(Incoming).collect::<Vec<_>>()
+    }
+
+    #[must_use]
     pub fn output_edges(&self, node: NodeIndex) -> petgraph::stable_graph::Neighbors<bool, u32> {
         self.graph.neighbors_directed(node, Outgoing)
     }
@@ -253,11 +258,10 @@ impl Mig {
                 let mut iter = self.graph.edges_directed(node, Incoming);
                 match (iter.next(), iter.next(), iter.next()) {
                     (Some(x), Some(y), Some(z)) => {
-                        assert_eq!(
-                            iter.next(),
-                            None,
-                            "majority gate with more than three inputs"
-                        );
+                        if let Some(w) = iter.next() {
+                            dbg!(w);
+                            panic!("majority gate {} has {} inputs", node.index(), iter.count()+4);
+                        }
                         Some((x.id(), y.id(), z.id()))
                     }
                     (Some(x), Some(y), None) => panic!(

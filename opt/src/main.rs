@@ -1,13 +1,14 @@
 use mignite::mig4::Mig;
 
 fn main() {
-    let mut mig = Mig::from_aiger("mem_ctrl.aag");
+    let mut mig = Mig::from_aiger("netlist.aag");
 
     //mig.to_graphviz("before.dot").unwrap();
 
-    mig.optimise_area();
+    //mig.optimise_global();
+    mig.optimise_area(&mig.input_nodes());
 
-    //mig.to_graphviz("after.dot").unwrap();
-    let f = std::fs::File::create("test.il").unwrap();
-    mig.to_rtlil(f).unwrap();
+    mig.to_graphviz("after.dot").unwrap();
+    //let f = std::fs::File::create("test.il").unwrap();
+    //mig.to_rtlil(f).unwrap();
 }
