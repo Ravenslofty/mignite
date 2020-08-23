@@ -1,8 +1,8 @@
 use crate::mig4;
 
 use mig4::MigNode;
-use petgraph::{visit::VisitMap, prelude::*};
-use std::io::Write;
+use petgraph::{prelude::*};
+
 
 impl mig4::Mig {
     fn transform_majority(&mut self, node: NodeIndex) -> Option<()> {
@@ -322,81 +322,46 @@ impl mig4::Mig {
 
             if a == from || b == from || c == from {
                 let d = self.add_node(MigNode::Majority);
-                if a == from {
-                    self.add_edge(to, d, a_is_inverted ^ from_is_inverted ^ to_is_inverted);
-                } else {
-                    self.add_edge(a, d, a_is_inverted);
-                }
 
-                if b == from {
-                    self.add_edge(to, d, b_is_inverted ^ from_is_inverted ^ to_is_inverted);
-                } else {
-                    self.add_edge(b, d, b_is_inverted);
-                }
+                let mut add_edge = |node, node_is_inverted| {
+                    if node == from {
+                        self.add_edge(to, d, node_is_inverted ^ from_is_inverted ^ to_is_inverted);
+                    } else {
+                        self.add_edge(node, d, node_is_inverted);
+                    }
+                };
 
-                if c == from {
-                    self.add_edge(to, d, c_is_inverted ^ from_is_inverted ^ to_is_inverted);
-                } else {
-                    self.add_edge(c, d, c_is_inverted);
-                }
+                add_edge(a, a_is_inverted);
+                add_edge(b, b_is_inverted);
+                add_edge(c, c_is_inverted);
 
                 self.remove_edge(edge);
                 self.add_edge(d, node, node_is_inverted);
             }
 
-            if a != from && a != to && a != node {
-                if let Some((x_edge, y_edge, z_edge)) = self.try_unwrap_majority(a) {
-                    let x = self.edge_source(x_edge);
-                    let y = self.edge_source(y_edge);
-                    let z = self.edge_source(z_edge);
+            let mut recurse = |child| {
+                if child != from && child != to && child != node {
+                    if let Some((x_edge, y_edge, z_edge)) = self.try_unwrap_majority(child) {
+                        let x = self.edge_source(x_edge);
+                        let y = self.edge_source(y_edge);
+                        let z = self.edge_source(z_edge);
+    
+                        let mut recurse = |child: NodeIndex, child_edge: EdgeIndex| {
+                            if child != from && child != to && child != node {
+                                self.replace(child_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
+                            }
+                        };
 
-                    if x != from && x != to && x != node {
-                        self.replace(x_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
-                    }
-                    if y != from && y != to && y != node {
-                        self.replace(y_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
-                    }
-                    if z != from && z != to && z != node {
-                        self.replace(z_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
+                        recurse(x, x_edge);
+                        recurse(y, y_edge);
+                        recurse(z, z_edge);
                     }
                 }
-            }
+            };
 
-            if b != from && b != to && b != node {
-                if let Some((x_edge, y_edge, z_edge)) = self.try_unwrap_majority(b) {
-                    let x = self.edge_source(x_edge);
-                    let y = self.edge_source(y_edge);
-                    let z = self.edge_source(z_edge);
-
-                    if x != from && x != to && x != node {
-                        self.replace(x_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
-                    }
-                    if y != from && y != to && y != node {
-                        self.replace(y_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
-                    }
-                    if z != from && z != to && z != node {
-                        self.replace(z_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
-                    }
-                }
-            }
-
-            if c != from && b != to && b != node {
-                if let Some((x_edge, y_edge, z_edge)) = self.try_unwrap_majority(c) {
-                    let x = self.edge_source(x_edge);
-                    let y = self.edge_source(y_edge);
-                    let z = self.edge_source(z_edge);
-
-                    if x != from && x != to && x != node {
-                        self.replace(x_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
-                    }
-                    if y != from && y != to && y != node {
-                        self.replace(y_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
-                    }
-                    if z != from && z != to && z != node {
-                        self.replace(z_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
-                    }
-                }
-            }
+            recurse(a);
+            recurse(b);
+            recurse(c);
         }
     }
 
@@ -429,8 +394,8 @@ impl mig4::Mig {
         };
 
         let mut did_something = relevance(x_edge, y_edge, z_edge).is_some();
-        //did_something |= relevance(y_edge, z_edge, x_edge).is_some();
-        //did_something |= relevance(z_edge, x_edge, y_edge).is_some();
+        did_something |= relevance(y_edge, z_edge, x_edge).is_some();
+        did_something |= relevance(z_edge, x_edge, y_edge).is_some();
         if did_something {
             Some(())
         } else {
