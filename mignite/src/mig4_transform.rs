@@ -1,7 +1,8 @@
 use crate::mig4;
 
 use mig4::MigNode;
-use petgraph::prelude::*;
+use petgraph::{visit::VisitMap, prelude::*};
+use std::io::Write;
 
 impl mig4::Mig {
     fn transform_majority(&mut self, node: NodeIndex) -> Option<()> {
@@ -301,9 +302,15 @@ impl mig4::Mig {
             .or_else(|| inverter_propagation(z_is_inverted, x_is_inverted))
     }
 
-    pub fn replace(&mut self, edge: EdgeIndex, from: NodeIndex, from_is_inverted: bool, to: NodeIndex, to_is_inverted: bool) {
-        let (node, _) = self.graph().edge_endpoints(edge).unwrap();
+    pub fn replace(&mut self, edge: EdgeIndex, from: NodeIndex, from_is_inverted: bool, to: NodeIndex, to_is_inverted: bool, visit_map: &mut [bool]) {
+        let (_, node) = self.graph().edge_endpoints(edge).unwrap();
         let node_is_inverted = self.is_edge_inverted(edge);
+
+        if visit_map[node.index()] {
+            return;
+        }
+
+        visit_map[node.index()] = true;
 
         if let Some((a_edge, b_edge, c_edge)) = self.try_unwrap_majority(node) {
             let a = self.edge_source(a_edge);
@@ -337,14 +344,58 @@ impl mig4::Mig {
                 self.add_edge(d, node, node_is_inverted);
             }
 
-            if a != from {
-                self.replace(a_edge, from, from_is_inverted, to, to_is_inverted);
+            if a != from && a != to && a != node {
+                if let Some((x_edge, y_edge, z_edge)) = self.try_unwrap_majority(a) {
+                    let x = self.edge_source(x_edge);
+                    let y = self.edge_source(y_edge);
+                    let z = self.edge_source(z_edge);
+
+                    if x != from && x != to && x != node {
+                        self.replace(x_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
+                    }
+                    if y != from && y != to && y != node {
+                        self.replace(y_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
+                    }
+                    if z != from && z != to && z != node {
+                        self.replace(z_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
+                    }
+                }
             }
-            if b != from {
-                self.replace(b_edge, from, from_is_inverted, to, to_is_inverted);
+
+            if b != from && b != to && b != node {
+                if let Some((x_edge, y_edge, z_edge)) = self.try_unwrap_majority(b) {
+                    let x = self.edge_source(x_edge);
+                    let y = self.edge_source(y_edge);
+                    let z = self.edge_source(z_edge);
+
+                    if x != from && x != to && x != node {
+                        self.replace(x_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
+                    }
+                    if y != from && y != to && y != node {
+                        self.replace(y_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
+                    }
+                    if z != from && z != to && z != node {
+                        self.replace(z_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
+                    }
+                }
             }
-            if c != from {
-                self.replace(c_edge, from, from_is_inverted, to, to_is_inverted);
+
+            if c != from && b != to && b != node {
+                if let Some((x_edge, y_edge, z_edge)) = self.try_unwrap_majority(c) {
+                    let x = self.edge_source(x_edge);
+                    let y = self.edge_source(y_edge);
+                    let z = self.edge_source(z_edge);
+
+                    if x != from && x != to && x != node {
+                        self.replace(x_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
+                    }
+                    if y != from && y != to && y != node {
+                        self.replace(y_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
+                    }
+                    if z != from && z != to && z != node {
+                        self.replace(z_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
+                    }
+                }
             }
         }
     }
@@ -369,14 +420,17 @@ impl mig4::Mig {
                 std::mem::swap(&mut x_is_inverted, &mut y_is_inverted);
             }
 
-            self.replace(z_edge, x, x_is_inverted, y, !y_is_inverted);
+            let max_index = self.graph().node_indices().max_by_key(|node| node.index()).unwrap();
+            let mut visit_map = vec![false; max_index.index()];
+
+            self.replace(z_edge, x, x_is_inverted, y, !y_is_inverted, &mut visit_map);
 
             Some(())
         };
 
         let mut did_something = relevance(x_edge, y_edge, z_edge).is_some();
-        did_something |= relevance(y_edge, z_edge, x_edge).is_some();
-        did_something |= relevance(z_edge, x_edge, y_edge).is_some();
+        //did_something |= relevance(y_edge, z_edge, x_edge).is_some();
+        //did_something |= relevance(z_edge, x_edge, y_edge).is_some();
         if did_something {
             Some(())
         } else {
@@ -551,22 +605,19 @@ impl mig4::Mig {
         let relevance = |graph: &mut Self| {
             let mut did_something = true;
             println!("   Relevance:\t\trewriting don't-care terms to increase common terms");
-            while did_something {
-                did_something = false;
-                let mut dfs = DfsPostOrder::empty(graph.graph());
-                let mut nodes = Vec::new();
-                for input in inputs {
-                    dfs.move_to(*input);
-                    while let Some(node) = dfs.next(graph.graph()) {
-                        did_something |= graph.transform_inverters(node).is_some();
-                        nodes.push(node);
-                    }
+            let mut dfs = DfsPostOrder::empty(graph.graph());
+            let mut nodes = Vec::new();
+            for input in inputs {
+                dfs.move_to(*input);
+                while let Some(node) = dfs.next(graph.graph()) {
+                    did_something |= graph.transform_inverters(node).is_some();
+                    nodes.push(node);
                 }
+            }
 
-                for node in nodes {
-                    graph.transform_relevance(node);
-                    did_something |= graph.transform_majority(node).is_some();
-                }
+            let node_count = nodes.len();
+            for (i, node) in nodes.into_iter().enumerate() {
+                graph.transform_relevance(node);
             }
         };
 
@@ -581,16 +632,16 @@ impl mig4::Mig {
             distributivity(self);
             relevance(self);
             //associativity(self);
-            //majority(self);
-            //distributivity(self);
+            majority(self);
+            distributivity(self);
 
             self.cleanup_graph();
+            //self.print_stats();
 
             if node_count == self.node_count() && edge_count == self.edge_count() {
                 break;
             }
         }
-
         self.print_stats();
     }
 }
