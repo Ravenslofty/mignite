@@ -8,4 +8,8 @@ edition = "2018"
 
 [dependencies]
 aiger = "0.2"
+itertools = "0.9"
 petgraph = "0.5"
+
+[profile.release]
+debug = true
