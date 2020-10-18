@@ -372,8 +372,10 @@ impl mig4::Mig {
         let mut relevance = |x_edge: EdgeIndex, y_edge: EdgeIndex, z_edge: EdgeIndex| {
             let mut x_is_inverted = self.is_edge_inverted(x_edge);
             let mut y_is_inverted = self.is_edge_inverted(y_edge);
+            let z_is_inverted = self.is_edge_inverted(z_edge);
             let mut x = self.edge_source(x_edge);
             let mut y = self.edge_source(y_edge);
+            let z = self.edge_source(z_edge);
 
             if self.node_type(x) == MigNode::Zero {
                 if self.node_type(y) == MigNode::Zero {
@@ -392,8 +394,8 @@ impl mig4::Mig {
         };
 
         let mut did_something = relevance(x_edge, y_edge, z_edge).is_some();
-        //did_something |= relevance(y_edge, z_edge, x_edge).is_some();
-        //did_something |= relevance(z_edge, x_edge, y_edge).is_some();
+        did_something |= relevance(y_edge, z_edge, x_edge).is_some();
+        did_something |= relevance(z_edge, x_edge, y_edge).is_some();
         if did_something {
             Some(())
         } else {
