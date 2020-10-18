@@ -5,3 +5,4 @@ pub mod mig4;
 pub mod mig4_rtlil;
 pub mod mig4_transform;
 pub mod mig4_global;
+pub mod mig4_map;
