@@ -5,11 +5,23 @@ use mignite::mig4_map::Mapper;
 fn main() {
     let mig = Mig::from_aiger("chess-resyn.aag");
 
-    let mut mapper = Mapper::new(999, 4, &mig);
+    //mig.optimise_area(&mig.input_nodes());
 
-    mapper.compute_cuts();
+    let mut depth1_mapper = Mapper::new(8, 4, &mig);
+    depth1_mapper.compute_cuts(Mapper::cut_rank_depth, Mapper::cut_rank_size, Mapper::cut_rank_area_flow);
+    let luts = depth1_mapper.map_luts();
 
-    mapper.map_luts();
+    for lut in luts {
+        
+    }
+
+    /* let mut depth2_mapper = Mapper::new(8, 4, &mig);
+    depth2_mapper.compute_cuts(Mapper::cut_rank_depth, Mapper::cut_rank_area_flow, Mapper::cut_rank_size);
+    depth2_mapper.map_luts();
+
+    let mut area_flow_mapper = Mapper::new(8, 4, &mig);
+    area_flow_mapper.compute_cuts(Mapper::cut_rank_area_flow, Mapper::cut_rank_fanin_refs, Mapper::cut_rank_depth);
+    area_flow_mapper.map_luts();*/
 
     //mig.to_graphviz("before.dot").unwrap();
 

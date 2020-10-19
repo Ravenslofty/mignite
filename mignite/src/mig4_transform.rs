@@ -595,10 +595,10 @@ impl mig4::Mig {
 
             majority(self);
             distributivity(self);
-            relevance(self);
+            //relevance(self);
             //associativity(self);
-            majority(self);
-            distributivity(self);
+            //majority(self);
+            //distributivity(self);
 
             self.cleanup_graph();
             //self.print_stats();
