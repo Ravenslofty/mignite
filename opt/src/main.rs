@@ -3,9 +3,9 @@ use mignite::mig4::Mig;
 use mignite::mig4_map::Mapper;
 
 fn main() {
-    let mig = Mig::from_aiger("netlist.aag");
+    let mig = Mig::from_aiger("chess-noresyn.aag");
 
-    let mut mapper = Mapper::new(999, 4, &mig);
+    let mut mapper = Mapper::new(8, 4, &mig);
 
     mapper.compute_cuts();
 
