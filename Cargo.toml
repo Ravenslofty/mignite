@@ -3,3 +3,7 @@ members = [
 	"mignite",
 	"opt",
 ]
+
+
+[profile.release]
+debug = true

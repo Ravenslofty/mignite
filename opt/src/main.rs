@@ -3,11 +3,13 @@ use mignite::mig4::Mig;
 use mignite::mig4_map::Mapper;
 
 fn main() {
-    let mut mig = Mig::from_aiger("netlist.aag");
+    let mig = Mig::from_aiger("netlist.aag");
 
-    let mut mapper = Mapper::new(999, 4, mig);
+    let mut mapper = Mapper::new(999, 4, &mig);
 
     mapper.compute_cuts();
+
+    mapper.map_luts();
 
     //mig.to_graphviz("before.dot").unwrap();
 
