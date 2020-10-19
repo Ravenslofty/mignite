@@ -178,14 +178,11 @@ impl<'a> Mapper<'a> {
                 }
             }
 
-            for node in cut.nodes() {
-                mapped_nodes.push(node);
-            }
-
+            mapped_nodes.push(NodeIndex::new(cut.output));
             mapping.push(cut);
         }
 
-        println!("Mapped to {} LUTs", mapped_nodes.len());
+        println!("Mapped to {} LUTs", mapping.len());
         println!("Maximum label: {}", max_label);
 
         mapping
