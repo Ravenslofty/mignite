@@ -11,6 +11,7 @@ pub struct Cut {
 }
 
 impl Cut {
+    #[must_use] 
     pub fn new(inputs: Vec<usize>, output: usize, nodes: Vec<usize>) -> Self {
         assert!((0..inputs.len() - 1).all(|i| inputs[i] <= inputs[i + 1]));
         assert!((0..nodes.len() - 1).all(|i| nodes[i] <= nodes[i + 1]));
@@ -18,10 +19,12 @@ impl Cut {
         Self { inputs, output, nodes }
     }
 
+    #[must_use]
     pub fn trivial(node: usize) -> Self {
         Self::new(vec![node], node, vec![node])
     }
 
+    #[must_use]
     pub fn input_count(&self) -> usize {
         if self.inputs.contains(&0) {
             self.inputs.len() - 1
@@ -30,10 +33,12 @@ impl Cut {
         }
     }
 
+    #[must_use]
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }
 
+    #[must_use]
     pub fn union(x: &Self, y: &Self, z: &Self, output: usize) -> Self {
         let nodes = [x.output, y.output, z.output];
         let inputs = x.inputs.iter().merge(&y.inputs).merge(&z.inputs).dedup().copied().collect::<Vec<_>>();
@@ -45,17 +50,7 @@ impl Cut {
         }
     }
 
-    /*
-    pub fn expand(&self, node: u32) -> Cut {
-        assert!(self.inputs.contains(node));
-        let inputs = ();
-        Self {
-            inputs,
-            output,
-            nodes,
-        }
-    }*/
-
+    #[must_use]
     pub fn dominates(&self, rhs: &Self) -> bool {
         rhs.nodes.iter().all(|node| self.nodes.binary_search(node).is_ok())
     }
@@ -78,6 +73,7 @@ pub struct Mapper<'a> {
 }
 
 impl<'a> Mapper<'a> {
+    #[must_use]
     pub fn new(max_cuts: usize, max_inputs: usize, mig: &'a mig4::Mig) -> Self {
         let len = mig.node_count();
         Self {
@@ -96,8 +92,6 @@ impl<'a> Mapper<'a> {
 
         while let Some(node) = iter.next(&self.mig.graph()) {
             if let Some((x_edge, y_edge, z_edge)) = self.mig.try_unwrap_majority(node) {
-                let mut cuts: Vec<Cut> = Vec::with_capacity(self.max_cuts);
-
                 let x = self.mig.edge_source(x_edge);
                 let y = self.mig.edge_source(y_edge);
                 let z = self.mig.edge_source(z_edge);
@@ -117,45 +111,37 @@ impl<'a> Mapper<'a> {
                     self.label[z.index()] = 0;
                 }
 
-                /*
-                let mut cuts = self.cuts[x.index()].iter()
+                // Compute the trivial cut of this node.
+                let mut inputs = vec![x.index(), y.index(), z.index()];
+                let mut nodes = vec![x.index(), y.index(), z.index(), node.index()];
+                inputs.sort_unstable();
+                nodes.sort_unstable();
+                let cut = Cut::new(inputs, node.index(), nodes);
+
+                let cuts = self.cuts[x.index()].iter()
                 .cartesian_product(&self.cuts[y.index()])
                 .cartesian_product(&self.cuts[z.index()])
                 .map(|((x_cut, y_cut), z_cut)| Cut::union(x_cut, y_cut, z_cut, node.index()))
-                .chain(Some(Cut::trivial(node.index())))
+                .chain(Some(cut))
                 .filter(|candidate| candidate.input_count() <= self.max_inputs)
-                // TODO: cut domination
-                .collect::<Vec<Cut>>();*/
+                .collect::<Vec<Cut>>();
 
-                for x_cut in &self.cuts[x.index()] {
-                    for y_cut in &self.cuts[y.index()] {
-                        for z_cut in &self.cuts[z.index()] {
-                            let candidate = Cut::union(x_cut, y_cut, z_cut, node.index());
-                            let dominated = cuts.iter().any(|cut| cut.dominates(&candidate));
-                            if candidate.input_count() <= self.max_inputs && !dominated {
-                                cuts.push(candidate);
-                            }
-                        }
-                    }
-                }
+                // Check for dominated cuts.
+                let cuts = cuts.iter()
+                .filter(|candidate| !cuts.iter().any(|cut| cut != *candidate && cut.dominates(candidate)))
+                .sorted_by_key(|cut| cut.inputs.iter().map(|node| self.label[*node]).max().unwrap() + 1)
+                .take(self.max_cuts)
+                .cloned()
+                .collect::<Vec<Cut>>();
 
-                let cut = Cut::trivial(node.index());
-                cuts.push(cut);
+                cut_count += cuts.len();
 
-                cut_count += cuts.len().min(self.max_cuts);
-
-                cuts.sort_by_key(|cut| self.label[cut.output]);
-
-                self.cuts[node.index()] = cuts.into_iter().take(self.max_cuts).collect::<Vec<_>>();
+                self.cuts[node.index()] = cuts;
                 self.label[node.index()] = self.cuts[node.index()][0].inputs.iter().map(|node| self.label[*node]).max().unwrap() + 1;
             }
         }
 
         println!("Found {} cuts", cut_count);
-    }
-
-    pub fn compute_cuts_taiga(&mut self) {
-        todo!()
     }
 
     pub fn map_luts(&mut self) -> Vec<Cut> {
@@ -168,8 +154,6 @@ impl<'a> Mapper<'a> {
         while let Some(node) = frontier.pop() {
             let cut = self.cuts[node.index()][0].clone();
             max_label = max_label.max(self.label[node.index()]);
-
-            //dbg!(&cut);
 
             for input in cut.inputs() {
                 if !mapped_nodes.contains(&input) && !input_nodes.contains(&input) {
