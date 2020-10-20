@@ -1,8 +1,16 @@
+#![allow(warnings)]
+
 use mignite::mig4::Mig;
 
 use mignite::mig4_map::Mapper;
 
 fn main() {
+    const UNIT_K: usize = 4;
+    const UNIT_C: usize = 8;
+    const UNIT_W: i32 = 1;
+    const UNIT_LUT_AREA: [u32; 5] = [0, 1, 1, 1, 1];
+    const UNIT_LUT_DELAY: [&[i32]; 5] = [&[], &[0], &[0, 0], &[0, 0, 0], &[0, 0, 0, 0]];
+
     const ICE40HX_K: usize = 4;
     const ICE40HX_C: usize = 8;
     const ICE40HX_W: i32 = 350;
@@ -21,12 +29,25 @@ fn main() {
     const CV_LUT_AREA: [u32; 7] = [0, 1, 1, 1, 1, 1, 2];
     const CV_LUT_DELAY: [&[i32]; 7] = [&[], &[97], &[97, 400], &[97, 400, 510], &[97, 400, 510, 512], &[97, 400, 510, 512, 583], &[97, 400, 510, 512, 583, 605]];
 
-    let mut mig = Mig::from_aiger("chess-resyn.aag");
+    let mut mig = Mig::from_aiger("hyp.aag");
 
-    println!("iCE40HX:");
+    println!("Unit delay:");
+    let mut depth1_mapper = Mapper::new(UNIT_C, UNIT_K, &UNIT_LUT_AREA, &UNIT_LUT_DELAY, UNIT_W, &mig);
+    depth1_mapper.compute_cuts(Mapper::cut_rank_depth, Mapper::cut_rank_size, Mapper::cut_rank_area_flow);
+    depth1_mapper.map_luts(true);
+    //depth1_mapper.compute_cuts(Mapper::cut_rank_depth, Mapper::cut_rank_area_flow, Mapper::cut_rank_size);
+    //depth1_mapper.map_luts(false);
+    depth1_mapper.compute_cuts(Mapper::cut_rank_area_flow, Mapper::cut_rank_fanin_refs, Mapper::cut_rank_depth);
+    depth1_mapper.map_luts(false);
+
+    /*println!("iCE40HX:");
     let mut depth1_mapper = Mapper::new(ICE40HX_C, ICE40HX_K, &ICE40HX_LUT_AREA, &ICE40HX_LUT_DELAY, ICE40HX_W, &mig);
     depth1_mapper.compute_cuts(Mapper::cut_rank_depth, Mapper::cut_rank_size, Mapper::cut_rank_area_flow);
-    depth1_mapper.map_luts();
+    depth1_mapper.map_luts(true);
+    //depth1_mapper.compute_cuts(Mapper::cut_rank_depth, Mapper::cut_rank_area_flow, Mapper::cut_rank_size);
+    //depth1_mapper.map_luts(false);
+    depth1_mapper.compute_cuts(Mapper::cut_rank_area_flow, Mapper::cut_rank_fanin_refs, Mapper::cut_rank_depth);
+    depth1_mapper.map_luts(false);
 
     /*let mut depth2_mapper = Mapper::new(ICE40HX_C, ICE40HX_K, &ICE40HX_LUT_AREA, &ICE40HX_LUT_DELAY, ICE40HX_W, &mig);
     depth2_mapper.compute_cuts(Mapper::cut_rank_depth, Mapper::cut_rank_area_flow, Mapper::cut_rank_size);
@@ -39,13 +60,21 @@ fn main() {
     println!("ECP5:");
     let mut depth1_mapper = Mapper::new(ECP5_C, ECP5_K, &ECP5_LUT_AREA, &ECP5_LUT_DELAY, ECP5_W, &mig);
     depth1_mapper.compute_cuts(Mapper::cut_rank_depth, Mapper::cut_rank_size, Mapper::cut_rank_area_flow);
-    depth1_mapper.map_luts();
+    depth1_mapper.map_luts(true);
+    depth1_mapper.compute_cuts(Mapper::cut_rank_depth, Mapper::cut_rank_area_flow, Mapper::cut_rank_size);
+    depth1_mapper.map_luts(false);
+    depth1_mapper.compute_cuts(Mapper::cut_rank_area_flow, Mapper::cut_rank_fanin_refs, Mapper::cut_rank_depth);
+    depth1_mapper.map_luts(false);
 
     println!("Cyclone V:");
 
     let mut depth1_mapper = Mapper::new(CV_C, CV_K, &CV_LUT_AREA, &CV_LUT_DELAY, CV_W, &mig);
     depth1_mapper.compute_cuts(Mapper::cut_rank_depth, Mapper::cut_rank_size, Mapper::cut_rank_area_flow);
-    depth1_mapper.map_luts();
+    depth1_mapper.map_luts(true);
+    depth1_mapper.compute_cuts(Mapper::cut_rank_depth, Mapper::cut_rank_area_flow, Mapper::cut_rank_size);
+    depth1_mapper.map_luts(false);
+    depth1_mapper.compute_cuts(Mapper::cut_rank_area_flow, Mapper::cut_rank_fanin_refs, Mapper::cut_rank_depth);
+    depth1_mapper.map_luts(false);*/
 
     //mig.to_graphviz("before.dot").unwrap();
 

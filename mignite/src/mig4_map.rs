@@ -80,7 +80,9 @@ pub struct Mapper<'a> {
     mig: &'a mig4::Mig,
     cuts: Vec<Vec<Cut>>,
     depth: Vec<i32>,
-    area_flow: Vec<u32>,
+    max_depth: i32,
+    height: Vec<i32>,
+    area_flow: Vec<f32>,
     references: Vec<u32>,
 }
 
@@ -97,36 +99,35 @@ impl<'a> Mapper<'a> {
             mig,
             cuts: vec![Vec::new(); len],
             depth: vec![-1000; len],
-            area_flow: vec![1; len],
+            max_depth: -1000,
+            height: vec![-1000; len],
+            area_flow: vec![1.0; len],
             references: vec![0; len],
         }
     }
 
     #[must_use]
     #[inline]
+    pub fn cut_depth(&self, cut: &Cut) -> i32 {
+        /*cut.inputs.iter().filter(|node| **node != 0).sorted_by_key(|node| self.depth[**node]).rev().enumerate().map(|(index, node)| {
+            self.depth[*node] + self.lut_delay[cut.input_count()][index]
+        }).max().unwrap() + self.wire_delay*/
+        cut.inputs.iter().filter(|node| **node != 0).enumerate().map(|(index, node)| {
+            self.depth[*node] + self.lut_delay[cut.input_count()][index]
+        }).max().unwrap() + self.wire_delay
+    }
+
+    #[must_use]
+    #[inline]
+    pub fn area_flow(&self, cut: &Cut) -> f32 {
+        (cut.inputs.iter().map(|node| self.area_flow[*node]).sum::<f32>() + self.lut_area[cut.input_count()] as f32) / (self.mig.output_edges(NodeIndex::new(cut.output)).count() as f32)
+    }
+
+    #[must_use]
+    #[inline]
     pub fn cut_rank_depth(&self, lhs: &Cut, rhs: &Cut) -> Ordering {
-        let lhs = lhs.inputs.iter().enumerate().map(|(index, node)| {
-            if lhs.inputs[0] == 0 {
-                if index == 0 {
-                    self.depth[*node]
-                } else {
-                    self.depth[*node] + self.lut_delay[lhs.input_count()][index - 1] + self.wire_delay
-                }
-            } else {
-                self.depth[*node] + self.lut_delay[lhs.input_count()][index] + self.wire_delay
-            }
-        }).max().unwrap();
-        let rhs = rhs.inputs.iter().enumerate().map(|(index, node)| {
-            if rhs.inputs[0] == 0 {
-                if index == 0 {
-                    self.depth[*node]
-                } else {
-                    self.depth[*node] + self.lut_delay[rhs.input_count()][index - 1] + self.wire_delay
-                }
-            } else {
-                self.depth[*node] + self.lut_delay[rhs.input_count()][index] + self.wire_delay
-            }
-        }).max().unwrap();
+        let lhs = self.cut_depth(lhs);
+        let rhs = self.cut_depth(rhs);
         lhs.cmp(&rhs)
     }
 
@@ -141,10 +142,8 @@ impl<'a> Mapper<'a> {
     #[must_use]
     #[inline]
     pub fn cut_rank_area_flow(&self, lhs: &Cut, rhs: &Cut) -> Ordering {
-        let fanout = self.mig.output_edges(NodeIndex::new(lhs.output)).count() as u32;
-        let lhs = (lhs.inputs.iter().map(|node| self.area_flow[*node]).sum::<u32>() + self.lut_area[lhs.input_count()]) / fanout;
-        let rhs = (rhs.inputs.iter().map(|node| self.area_flow[*node]).sum::<u32>() + self.lut_area[rhs.input_count()]) / fanout;
-
+        let lhs = self.area_flow(lhs);
+        let rhs = self.area_flow(rhs);
         lhs.partial_cmp(&rhs).unwrap()
     }
 
@@ -172,19 +171,19 @@ impl<'a> Mapper<'a> {
                 if self.cuts[x.index()].is_empty() {
                     self.cuts[x.index()] = vec![Cut::single_node(x.index())];
                     self.depth[x.index()] = 0;
-                    self.area_flow[x.index()] = 0;
+                    self.area_flow[x.index()] = 0.0;
                 }
 
                 if self.cuts[y.index()].is_empty() {
                     self.cuts[y.index()] = vec![Cut::single_node(y.index())];
                     self.depth[y.index()] = 0;
-                    self.area_flow[x.index()] = 0;
+                    self.area_flow[y.index()] = 0.0;
                 }
 
                 if self.cuts[z.index()].is_empty() {
                     self.cuts[z.index()] = vec![Cut::single_node(z.index())];
                     self.depth[z.index()] = 0;
-                    self.area_flow[x.index()] = 0;
+                    self.area_flow[z.index()] = 0.0;
                 }
 
                 // Compute the trivial cut of this node.
@@ -199,9 +198,22 @@ impl<'a> Mapper<'a> {
                 .cartesian_product(&self.cuts[z.index()])
                 .map(|((x_cut, y_cut), z_cut)| Cut::union(x_cut, y_cut, z_cut, node.index()))
                 .chain(std::iter::once(cut))
-                //.chain(self.cuts[node.index()].first().cloned())
+                .chain(self.cuts[node.index()].first().cloned())
                 .filter(|candidate| candidate.input_count() <= self.max_inputs)
+                .filter(|candidate| {
+                    if self.height[node.index()] < 0 {
+                        return true;
+                    }
+                    assert!(self.max_depth - self.height[node.index()] >= 0);
+                    if self.cut_depth(candidate) > self.max_depth - self.height[node.index()] {
+                        dbg!(node.index(), self.cut_depth(candidate), self.max_depth, self.height[node.index()]);
+                        return false;
+                    }
+                    true
+                })
                 .collect::<Vec<Cut>>();
+
+                assert!(!cuts.is_empty());
 
                 // Check for dominated cuts.
                 let cuts = cuts.iter()
@@ -217,18 +229,8 @@ impl<'a> Mapper<'a> {
 
                 let best_cut = &self.cuts[node.index()][0];
 
-                self.depth[node.index()] = best_cut.inputs.iter().enumerate().map(|(index, node)| {
-                    if best_cut.inputs[0] == 0 {
-                        if index == 0 {
-                            self.depth[*node]
-                        } else {
-                            self.depth[*node] + self.lut_delay[best_cut.input_count()][index - 1] + self.wire_delay
-                        }
-                    } else {
-                        self.depth[*node] + self.lut_delay[best_cut.input_count()][index] + self.wire_delay
-                    }
-                }).max().unwrap();
-                self.area_flow[node.index()] = (best_cut.inputs.iter().map(|node| self.area_flow[*node]).sum::<u32>() + self.lut_area[best_cut.input_count()]) / (self.mig.output_edges(node).count() as u32);
+                self.depth[node.index()] = self.cut_depth(best_cut);
+                self.area_flow[node.index()] = self.area_flow(best_cut);
 
                 for input in &best_cut.inputs {
                     self.references[*input] += 1;
@@ -236,21 +238,37 @@ impl<'a> Mapper<'a> {
             }
         }
 
+        self.max_depth = *self.depth.iter().max().unwrap();
+
         println!("Found {} cuts", cut_count);
     }
 
-    pub fn map_luts(&mut self) -> Vec<Cut> {
+    pub fn map_luts(&mut self, build_heights: bool) -> Vec<Cut> {
         let mut frontier = self.mig.graph().externals(Outgoing).flat_map(|output| self.mig.graph().neighbors_directed(output, Incoming)).collect::<Vec<_>>();
         let mut mapping = Vec::new();
         let mut mapped_nodes = Vec::new();
         let input_nodes = self.mig.input_nodes();
         let mut max_label = 0;
+        let mut max_height = 0;
+
+        if build_heights {
+            for node in &frontier {
+                self.height[node.index()] = 0;
+            }
+        }
 
         while let Some(node) = frontier.pop() {
             let cut = self.cuts[node.index()][0].clone();
             max_label = max_label.max(self.depth[node.index()]);
+            max_height = max_height.max(self.height[node.index()]);
 
-            for input in cut.inputs() {
+            for (index, input) in cut.inputs().filter(|node| node.index() != 0).enumerate() {
+                if build_heights {
+                    assert!(self.height[node.index()] >= 0);
+                    self.height[input.index()] = self.height[input.index()].max(self.height[node.index()] + self.lut_delay[cut.input_count()][index] + self.wire_delay);
+                    assert!(self.height[input.index()] > self.height[node.index()]);
+                    assert!(self.height[input.index()] + self.depth[input.index()] <= self.max_depth);
+                }
                 if !mapped_nodes.contains(&input) && !input_nodes.contains(&input) {
                     frontier.push(input)
                 }
@@ -268,6 +286,9 @@ impl<'a> Mapper<'a> {
         }
 
         println!("Maximum delay: {}", max_label);
+        println!("Maximum height: {}", max_height);
+
+        assert_eq!(max_label - 1, max_height);
 
         mapping
     }

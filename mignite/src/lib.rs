@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic, clippy::nursery)]
+#![allow(warnings)]
 
 pub mod mig4;
 pub mod mig4_rtlil;
