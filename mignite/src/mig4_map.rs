@@ -22,7 +22,7 @@ impl Cut {
     }
 
     #[must_use]
-    pub fn trivial(node: usize) -> Self {
+    pub fn single_node(node: usize) -> Self {
         Self::new(vec![node], node, vec![node])
     }
 
@@ -42,7 +42,7 @@ impl Cut {
 
     /// Merge three cuts into a new cut, rooted at `output`.
     ///
-    /// This method is linear in the number of nodes 
+    /// This method is linear in the number of nodes in `x`, `y` and `z`.
     #[must_use]
     pub fn union(x: &Self, y: &Self, z: &Self, output: usize) -> Self {
         let nodes = [x.output, y.output, z.output];
@@ -74,20 +74,26 @@ impl Cut {
 pub struct Mapper<'a> {
     max_cuts: usize,
     max_inputs: usize,
+    lut_area: &'a [u32],
+    lut_delay: &'a [&'a [i32]],
+    wire_delay: i32,
     mig: &'a mig4::Mig,
     cuts: Vec<Vec<Cut>>,
     depth: Vec<i32>,
-    area_flow: Vec<i32>,
+    area_flow: Vec<u32>,
     references: Vec<u32>,
 }
 
 impl<'a> Mapper<'a> {
     #[must_use]
-    pub fn new(max_cuts: usize, max_inputs: usize, mig: &'a mig4::Mig) -> Self {
+    pub fn new(max_cuts: usize, max_inputs: usize, lut_area: &'a [u32], lut_delay: &'a [&'a [i32]], wire_delay: i32, mig: &'a mig4::Mig) -> Self {
         let len = mig.node_count();
         Self {
             max_cuts,
             max_inputs,
+            lut_area,
+            lut_delay,
+            wire_delay,
             mig,
             cuts: vec![Vec::new(); len],
             depth: vec![-1000; len],
@@ -99,8 +105,28 @@ impl<'a> Mapper<'a> {
     #[must_use]
     #[inline]
     pub fn cut_rank_depth(&self, lhs: &Cut, rhs: &Cut) -> Ordering {
-        let lhs = lhs.inputs.iter().map(|node| self.depth[*node]).max().unwrap() + 1;
-        let rhs = rhs.inputs.iter().map(|node| self.depth[*node]).max().unwrap() + 1;
+        let lhs = lhs.inputs.iter().enumerate().map(|(index, node)| {
+            if lhs.inputs[0] == 0 {
+                if index == 0 {
+                    self.depth[*node]
+                } else {
+                    self.depth[*node] + self.lut_delay[lhs.input_count()][index - 1] + self.wire_delay
+                }
+            } else {
+                self.depth[*node] + self.lut_delay[lhs.input_count()][index] + self.wire_delay
+            }
+        }).max().unwrap();
+        let rhs = rhs.inputs.iter().enumerate().map(|(index, node)| {
+            if rhs.inputs[0] == 0 {
+                if index == 0 {
+                    self.depth[*node]
+                } else {
+                    self.depth[*node] + self.lut_delay[rhs.input_count()][index - 1] + self.wire_delay
+                }
+            } else {
+                self.depth[*node] + self.lut_delay[rhs.input_count()][index] + self.wire_delay
+            }
+        }).max().unwrap();
         lhs.cmp(&rhs)
     }
 
@@ -115,9 +141,9 @@ impl<'a> Mapper<'a> {
     #[must_use]
     #[inline]
     pub fn cut_rank_area_flow(&self, lhs: &Cut, rhs: &Cut) -> Ordering {
-        let fanout = self.mig.output_edges(NodeIndex::new(lhs.output)).count() as i32;
-        let lhs = (lhs.inputs.iter().map(|node| self.area_flow[*node]).sum::<i32>() + 1) / fanout;
-        let rhs = (rhs.inputs.iter().map(|node| self.area_flow[*node]).sum::<i32>() + 1) / fanout;
+        let fanout = self.mig.output_edges(NodeIndex::new(lhs.output)).count() as u32;
+        let lhs = (lhs.inputs.iter().map(|node| self.area_flow[*node]).sum::<u32>() + self.lut_area[lhs.input_count()]) / fanout;
+        let rhs = (rhs.inputs.iter().map(|node| self.area_flow[*node]).sum::<u32>() + self.lut_area[rhs.input_count()]) / fanout;
 
         lhs.partial_cmp(&rhs).unwrap()
     }
@@ -144,19 +170,19 @@ impl<'a> Mapper<'a> {
                 let z = self.mig.edge_source(z_edge);
 
                 if self.cuts[x.index()].is_empty() {
-                    self.cuts[x.index()] = vec![Cut::trivial(x.index())];
+                    self.cuts[x.index()] = vec![Cut::single_node(x.index())];
                     self.depth[x.index()] = 0;
                     self.area_flow[x.index()] = 0;
                 }
 
                 if self.cuts[y.index()].is_empty() {
-                    self.cuts[y.index()] = vec![Cut::trivial(y.index())];
+                    self.cuts[y.index()] = vec![Cut::single_node(y.index())];
                     self.depth[y.index()] = 0;
                     self.area_flow[x.index()] = 0;
                 }
 
                 if self.cuts[z.index()].is_empty() {
-                    self.cuts[z.index()] = vec![Cut::trivial(z.index())];
+                    self.cuts[z.index()] = vec![Cut::single_node(z.index())];
                     self.depth[z.index()] = 0;
                     self.area_flow[x.index()] = 0;
                 }
@@ -191,20 +217,18 @@ impl<'a> Mapper<'a> {
 
                 let best_cut = &self.cuts[node.index()][0];
 
-                static ICE40HX_DELAY: [i32; 4] = [316, 379, 400, 449];
-
                 self.depth[node.index()] = best_cut.inputs.iter().enumerate().map(|(index, node)| {
                     if best_cut.inputs[0] == 0 {
                         if index == 0 {
                             self.depth[*node]
                         } else {
-                            self.depth[*node] + ICE40HX_DELAY[index - 1]
+                            self.depth[*node] + self.lut_delay[best_cut.input_count()][index - 1] + self.wire_delay
                         }
                     } else {
-                        self.depth[*node] + ICE40HX_DELAY[index]
+                        self.depth[*node] + self.lut_delay[best_cut.input_count()][index] + self.wire_delay
                     }
                 }).max().unwrap();
-                self.area_flow[node.index()] = (best_cut.inputs.iter().map(|node| self.area_flow[*node]).sum::<i32>() + 1) / (self.mig.output_edges(node).count() as i32);
+                self.area_flow[node.index()] = (best_cut.inputs.iter().map(|node| self.area_flow[*node]).sum::<u32>() + self.lut_area[best_cut.input_count()]) / (self.mig.output_edges(node).count() as u32);
 
                 for input in &best_cut.inputs {
                     self.references[*input] += 1;
@@ -212,7 +236,7 @@ impl<'a> Mapper<'a> {
             }
         }
 
-        //println!("Found {} cuts", cut_count);
+        println!("Found {} cuts", cut_count);
     }
 
     pub fn map_luts(&mut self) -> Vec<Cut> {
@@ -236,15 +260,14 @@ impl<'a> Mapper<'a> {
             mapping.push(cut);
         }
 
-        //println!("Mapped to {} LUTs", mapping.len());
+        println!("Mapped to {} LUTs", mapping.len());
+        println!("Estimated area: {} units", mapping.iter().map(|cut| self.lut_area[cut.input_count()]).sum::<u32>());
 
-        //println!("LUT0: {}", mapping.iter().filter(|cut| cut.input_count() == 0).count());
-        //println!("LUT1: {}", mapping.iter().filter(|cut| cut.input_count() == 1).count());
-        //println!("LUT2: {}", mapping.iter().filter(|cut| cut.input_count() == 2).count());
-        //println!("LUT3: {}", mapping.iter().filter(|cut| cut.input_count() == 3).count());
-        //println!("LUT4: {}", mapping.iter().filter(|cut| cut.input_count() == 4).count());
-    
-        //println!("Maximum depth: {}", max_label);
+        for i in 0..=self.max_inputs {
+            println!("LUT{}: {}", i, mapping.iter().filter(|cut| cut.input_count() == i).count());
+        }
+
+        println!("Maximum delay: {}", max_label);
 
         mapping
     }
