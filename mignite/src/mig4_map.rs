@@ -82,7 +82,7 @@ pub struct Mapper<'a> {
     cuts: Vec<Vec<Cut>>,
     depth: Vec<i32>,
     max_depth: i32,
-    height: Vec<i32>,
+    required: Vec<i32>,
     area_flow: Vec<f32>,
     references: Vec<u32>,
 }
@@ -92,7 +92,7 @@ impl<'a> Mapper<'a> {
     pub fn new(max_cuts: usize, max_inputs: usize, lut_area: &'a [u32], lut_delay: &'a [&'a [i32]], wire_delay: i32, mig: &'a mig4::Mig) -> Self {
         assert!(!petgraph::algo::is_cyclic_directed(mig.graph()));
 
-        let len = mig.node_count();
+        let len = mig.graph().node_indices().map(|node| node.index()).max().unwrap() + 1;
         Self {
             max_cuts,
             max_inputs,
@@ -103,7 +103,7 @@ impl<'a> Mapper<'a> {
             cuts: vec![Vec::new(); len],
             depth: vec![-1000; len],
             max_depth: -1000,
-            height: vec![-1; len],
+            required: vec![-1; len],
             area_flow: vec![1.0; len],
             references: vec![0; len],
         }
@@ -115,11 +115,9 @@ impl<'a> Mapper<'a> {
         /*cut.inputs.iter().filter(|node| **node != 0).sorted_by_key(|node| self.depth[**node]).rev().enumerate().map(|(index, node)| {
             self.depth[*node] + self.lut_delay[cut.input_count()][index]
         }).max().unwrap() + self.wire_delay*/
-        let res = cut.inputs.iter().filter(|node| **node != 0).enumerate().map(|(index, node)| {
-            self.depth[*node] //+ self.lut_delay[cut.input_count()][index]
-        }).max().unwrap() + 1; //self.wire_delay;
-
-        res
+        cut.inputs.iter().filter(|node| **node != 0).enumerate().map(|(index, node)| {
+            self.depth[*node] + self.lut_delay[cut.input_count()][index]
+        }).max().unwrap_or(0) + self.wire_delay
     }
 
     #[must_use]
@@ -165,7 +163,7 @@ impl<'a> Mapper<'a> {
     {
         for node in self.mig.graph().node_indices() {
             self.depth[node.index()] = -1000;
-            self.area_flow[node.index()] = 1.0;
+            self.area_flow[node.index()] = 0.0;
         }
 
         for node in self.mig.input_nodes() {
@@ -195,21 +193,23 @@ impl<'a> Mapper<'a> {
                 .cartesian_product(&self.cuts[y.index()])
                 .cartesian_product(&self.cuts[z.index()])
                 .map(|((x_cut, y_cut), z_cut)| Cut::union(x_cut, y_cut, z_cut, node.index()))
-                .filter(|candidate| candidate.input_count() <= self.max_inputs)
-                .filter(|candidate| self.height[node.index()] < 0 || self.cut_depth(candidate) <= self.max_depth - self.height[node.index()])
                 .chain(std::iter::once(cut.clone()))
                 .chain(self.cuts[node.index()].first().cloned())
+                .filter(|candidate| candidate.input_count() <= self.max_inputs)
+                .filter(|candidate| self.required[node.index()] < 0 || self.cut_depth(candidate) <= self.required[node.index()])
                 .collect::<Vec<Cut>>();
 
                 assert!(!cuts.is_empty());
 
                 // Check for dominated cuts.
                 let cuts = cuts.iter()
-                .filter(|candidate| !cuts.iter().any(|cut| cut.dominates(candidate)))
+                //.filter(|candidate| !cuts.iter().any(|cut| cut.dominates(candidate)))
                 .sorted_by(|lhs, rhs| sort_first(self, lhs, rhs).then_with(|| sort_second(self, lhs, rhs)).then_with(|| sort_third(self, lhs, rhs)))
                 .take(self.max_cuts)
                 .cloned()
                 .collect::<Vec<Cut>>();
+
+                assert!(!cuts.is_empty());
 
                 cut_count += cuts.len();
 
@@ -219,6 +219,8 @@ impl<'a> Mapper<'a> {
 
                 self.depth[node.index()] = self.cut_depth(best_cut);
                 self.area_flow[node.index()] = self.area_flow(best_cut);
+
+                self.max_depth = self.max_depth.max(self.depth[node.index()]);
 
                 for input in &best_cut.inputs {
                     self.references[*input] += 1;
@@ -230,45 +232,25 @@ impl<'a> Mapper<'a> {
     }
 
     pub fn map_luts(&mut self, build_heights: bool) -> Vec<Cut> {
-        let mut frontier = self.mig.graph().externals(Outgoing).flat_map(|output| self.mig.graph().neighbors_directed(output, Incoming)).collect::<Vec<_>>();
+        let mut frontier = self.mig.graph()
+            .externals(Outgoing)
+            .flat_map(|output| self.mig.graph().neighbors_directed(output, Incoming))
+            .filter(|node| self.mig.node_type(*node) == mig4::MigNode::Majority)
+            .collect::<Vec<_>>();
         let mut mapping = Vec::new();
         let mut mapped_nodes = Vec::new();
         let input_nodes = self.mig.input_nodes();
-        let mut max_label = 0;
-        let mut max_height = 0;
-
-        if build_heights {
-            for node in self.mig.graph().node_indices() {
-                self.height[node.index()] = -1000;
-            }
-
-            for node in &frontier {
-                self.height[node.index()] = 0;
-            }
-        }
 
         while let Some(node) = frontier.pop() {
-            let cut = self.cuts[node.index()][0].clone();
-
-            for (index, input) in cut.inputs().filter(|node| node.index() != 0).enumerate() {
-                if build_heights {
-                    self.height[input.index()] = self.height[input.index()].max(self.height[node.index()] + self.lut_delay[cut.input_count()][index] + self.wire_delay);
-
-                    if self.height[input.index()] > max_height {
-                        max_height = self.height[input.index()];
-                    }
-
-                    if self.depth[input.index()] > max_label {
-                        max_label = self.depth[input.index()];
-                    }
-                }
+            let cut = &self.cuts[node.index()][0];
+            for input in cut.inputs().filter(|node| node.index() != 0) {
                 if !mapped_nodes.contains(&input) && !input_nodes.contains(&input) {
                     frontier.push(input)
                 }
             }
 
             mapped_nodes.push(NodeIndex::new(cut.output));
-            mapping.push(cut);
+            mapping.push(cut.clone());
         }
 
         println!("Mapped to {} LUTs", mapping.len());
@@ -278,10 +260,25 @@ impl<'a> Mapper<'a> {
             println!("LUT{}: {}", i, mapping.iter().filter(|cut| cut.input_count() == i).count());
         }
 
-        println!("Maximum delay: {}", max_label);
-        println!("Maximum height: {}", max_height);
+        println!("Maximum delay: {}", self.max_depth);
 
-        //assert_eq!(max_label - 1, max_height);
+        for node in self.mig.graph().node_indices() {
+            self.required[node.index()] = self.max_depth;
+        }
+
+        let mut required_dfs = petgraph::visit::DfsPostOrder::empty(self.mig.graph());
+        let pis = self.mig.input_nodes();
+        for pi in pis {
+            required_dfs.move_to(pi);
+            while let Some(node) = required_dfs.next(self.mig.graph()) {
+                if let Some(cut) = self.cuts[node.index()].first() {
+                    let required = self.required[node.index()] - self.wire_delay;
+                    for (index, input) in cut.inputs().filter(|node| node.index() != 0).enumerate() {
+                        self.required[input.index()] = self.required[input.index()].min(required - self.lut_delay[cut.input_count()][index]);
+                    }
+                }
+            }
+        }
 
         mapping
     }
