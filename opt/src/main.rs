@@ -29,7 +29,9 @@ fn main() {
     const CV_LUT_AREA: [u32; 7] = [0, 1, 1, 1, 1, 1, 2];
     const CV_LUT_DELAY: [&[i32]; 7] = [&[], &[97], &[97, 400], &[97, 400, 510], &[97, 400, 510, 512], &[97, 400, 510, 512, 583], &[97, 400, 510, 512, 583, 605]];
 
-    let mut mig = Mig::from_aiger("hyp.aag");
+    let mut mig = Mig::from_aiger("chess-resyn.aag");
+
+    //mig.to_graphviz("after.dot").unwrap();
 
     println!("Unit delay:");
     let mut depth1_mapper = Mapper::new(UNIT_C, UNIT_K, &UNIT_LUT_AREA, &UNIT_LUT_DELAY, UNIT_W, &mig);
@@ -38,7 +40,7 @@ fn main() {
     //depth1_mapper.compute_cuts(Mapper::cut_rank_depth, Mapper::cut_rank_area_flow, Mapper::cut_rank_size);
     //depth1_mapper.map_luts(false);
     depth1_mapper.compute_cuts(Mapper::cut_rank_area_flow, Mapper::cut_rank_fanin_refs, Mapper::cut_rank_depth);
-    depth1_mapper.map_luts(false);
+    depth1_mapper.map_luts(true);
 
     /*println!("iCE40HX:");
     let mut depth1_mapper = Mapper::new(ICE40HX_C, ICE40HX_K, &ICE40HX_LUT_AREA, &ICE40HX_LUT_DELAY, ICE40HX_W, &mig);
@@ -81,7 +83,7 @@ fn main() {
     //mig.optimise_global();
     //mig.optimise_area(&mig.input_nodes());
 
-    //mig.to_graphviz("after.dot").unwrap();
+
     //let f = std::fs::File::create("test.il").unwrap();
     //mig.to_rtlil(f).unwrap();
 }
