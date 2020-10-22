@@ -157,6 +157,7 @@ impl<'a> Mapper<'a> {
         for node in self.mig.graph().node_indices() {
             self.depth[node.index()] = -1000;
             self.area_flow[node.index()] = 0.0;
+            self.references[node.index()] = 0;
         }
 
         for node in self.mig.input_nodes() {
@@ -202,14 +203,15 @@ impl<'a> Mapper<'a> {
 
                 let best_cut = &self.cuts[node.index()][0];
 
+                for input in &best_cut.inputs {
+                    self.references[*input] += 1;
+                    self.area_flow[*input] = self.area_flow(&self.cuts[*input][0]);
+                }
+
                 self.depth[node.index()] = self.cut_depth(best_cut);
                 self.area_flow[node.index()] = self.area_flow(best_cut);
 
                 self.max_depth = self.max_depth.max(self.depth[node.index()]);
-
-                for input in &best_cut.inputs {
-                    self.references[*input] += 1;
-                }
             }
         }
 
