@@ -56,13 +56,6 @@ impl Cut {
         }
     }
 
-    /// `self` dominates `rhs` if all the nodes in `rhs` are contained in `self`.
-    /// A cut does not dominate itself.
-    #[must_use]
-    pub fn dominates(&self, rhs: &Self) -> bool {
-        self != rhs && rhs.nodes.iter().all(|node| self.nodes.binary_search(node).is_ok())
-    }
-
     pub fn inputs(&self) -> impl Iterator<Item=NodeIndex> + '_ {
         self.inputs.iter().map(|node| NodeIndex::new(*node))
     }
@@ -197,16 +190,8 @@ impl<'a> Mapper<'a> {
                 .chain(self.cuts[node.index()].first().cloned())
                 .filter(|candidate| candidate.input_count() <= self.max_inputs)
                 .filter(|candidate| self.required[node.index()] < 0 || self.cut_depth(candidate) <= self.required[node.index()])
-                .collect::<Vec<Cut>>();
-
-                assert!(!cuts.is_empty());
-
-                // Check for dominated cuts.
-                let cuts = cuts.iter()
-                //.filter(|candidate| !cuts.iter().any(|cut| cut.dominates(candidate)))
                 .sorted_by(|lhs, rhs| sort_first(self, lhs, rhs).then_with(|| sort_second(self, lhs, rhs)).then_with(|| sort_third(self, lhs, rhs)))
                 .take(self.max_cuts)
-                .cloned()
                 .collect::<Vec<Cut>>();
 
                 assert!(!cuts.is_empty());
