@@ -107,7 +107,7 @@ impl<'a> Mapper<'a> {
     pub fn cut_depth(&self, cut: &Cut) -> i32 {
         /*cut.inputs.iter().filter(|node| **node != 0).sorted_by_key(|node| self.depth[**node]).rev().enumerate().map(|(index, node)| {
             self.depth[*node] + self.lut_delay[cut.input_count()][index]
-        }).max().unwrap() + self.wire_delay*/
+        }).max().unwrap_or(0) + self.wire_delay*/
         cut.inputs.iter().filter(|node| **node != 0).enumerate().map(|(index, node)| {
             self.depth[*node] + self.lut_delay[cut.input_count()][index]
         }).max().unwrap_or(0) + self.wire_delay
@@ -116,7 +116,7 @@ impl<'a> Mapper<'a> {
     #[must_use]
     #[inline]
     pub fn area_flow(&self, cut: &Cut) -> f32 {
-        (cut.inputs.iter().map(|node| self.area_flow[*node]).sum::<f32>() + self.lut_area[cut.input_count()] as f32) / (self.mig.output_edges(NodeIndex::new(cut.output)).count() as f32)
+        (cut.inputs.iter().map(|node| self.area_flow[*node]).sum::<f32>() + self.lut_area[cut.input_count()] as f32) / (self.references[cut.output].max(1) as f32)
     }
 
     #[must_use]
