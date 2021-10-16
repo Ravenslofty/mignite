@@ -198,6 +198,7 @@ impl<'a> Mapper<'a> {
         for node in self.mig.graph().node_indices() {
             self.depth[node.index()] = -1000;
             self.area_flow[node.index()] = 0.0;
+            self.edge_flow[node.index()] = 0.0;
             self.references[node.index()] = 0;
         }
 
@@ -205,6 +206,7 @@ impl<'a> Mapper<'a> {
             self.cuts[node.index()] = vec![Cut::single_node(node.index())];
             self.depth[node.index()] = 0;
             self.area_flow[node.index()] = 0.0;
+            self.edge_flow[node.index()] = 0.0;
         }
 
         let mut iter = petgraph::visit::Topo::new(self.mig.graph());
@@ -248,10 +250,12 @@ impl<'a> Mapper<'a> {
                 for input in &best_cut.inputs {
                     self.references[*input] += 1;
                     self.area_flow[*input] = self.area_flow(&self.cuts[*input][0]);
+                    self.edge_flow[*input] = self.edge_flow(&self.cuts[*input][0]);
                 }
 
                 self.depth[node.index()] = self.cut_depth(best_cut);
                 self.area_flow[node.index()] = self.area_flow(best_cut);
+                self.edge_flow[node.index()] = self.edge_flow(best_cut);
 
                 self.max_depth = self.max_depth.max(self.depth[node.index()]);
             }
