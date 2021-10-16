@@ -26,7 +26,7 @@ impl mig4::Mig {
                     } else {
                         // M(x, x', y) => y
                         self.add_edge(z, output, z_is_inverted ^ inverted);
-                    }   
+                    }
                 }
                 self.remove_node(node);
                 return Some(());
@@ -40,7 +40,7 @@ impl mig4::Mig {
     }
 
     /// Transform `M(x, u, M(y, u, z))` to `M(z, u, M(y, u, x))`
-    #[allow(clippy::many_single_char_names, clippy::shadow_unrelated)]
+    #[allow(clippy::many_single_char_names, clippy::shadow_unrelated, clippy::missing_panics_doc)]
     pub fn transform_associativity(&mut self, node: NodeIndex) -> Option<()> {
         type Input = (NodeIndex, bool);
 
@@ -345,7 +345,7 @@ impl mig4::Mig {
                         let x = self.edge_source(x_edge);
                         let y = self.edge_source(y_edge);
                         let z = self.edge_source(z_edge);
-    
+
                         let mut recurse = |child: NodeIndex, child_edge: EdgeIndex| {
                             if child != from && child != to && child != node {
                                 self.replace(child_edge, from, from_is_inverted, to, to_is_inverted, visit_map);
@@ -568,20 +568,18 @@ impl mig4::Mig {
         };
 
         let relevance = |graph: &mut Self| {
-            let mut did_something = true;
             println!("   Relevance:\t\trewriting don't-care terms to increase common terms");
             let mut dfs = DfsPostOrder::empty(graph.graph());
             let mut nodes = Vec::new();
             for input in inputs {
                 dfs.move_to(*input);
                 while let Some(node) = dfs.next(graph.graph()) {
-                    did_something |= graph.transform_inverters(node).is_some();
+                    graph.transform_inverters(node);
                     nodes.push(node);
                 }
             }
 
-            let node_count = nodes.len();
-            for (i, node) in nodes.into_iter().enumerate() {
+            for node in nodes.into_iter() {
                 graph.transform_relevance(node);
             }
         };

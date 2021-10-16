@@ -13,7 +13,7 @@ pub struct Cut {
 }
 
 impl Cut {
-    #[must_use] 
+    #[must_use]
     pub fn new(inputs: Vec<usize>, output: usize, nodes: Vec<usize>) -> Self {
         assert!((0..inputs.len() - 1).all(|i| inputs[i] <= inputs[i + 1]));
         assert!((0..nodes.len() - 1).all(|i| nodes[i] <= nodes[i + 1]));
@@ -77,6 +77,7 @@ pub struct Mapper<'a> {
     max_depth: i32,
     required: Vec<i32>,
     area_flow: Vec<f32>,
+    edge_flow: Vec<f32>,
     references: Vec<u32>,
 }
 
@@ -98,6 +99,7 @@ impl<'a> Mapper<'a> {
             max_depth: -1000,
             required: vec![-1; len],
             area_flow: vec![1.0; len],
+            edge_flow: vec![1.0; len],
             references: vec![0; len],
         }
     }
@@ -105,10 +107,7 @@ impl<'a> Mapper<'a> {
     #[must_use]
     #[inline]
     pub fn cut_depth(&self, cut: &Cut) -> i32 {
-        /*cut.inputs.iter().filter(|node| **node != 0).sorted_by_key(|node| self.depth[**node]).rev().enumerate().map(|(index, node)| {
-            self.depth[*node] + self.lut_delay[cut.input_count()][index]
-        }).max().unwrap_or(0) + self.wire_delay*/
-        cut.inputs.iter().filter(|node| **node != 0).enumerate().map(|(index, node)| {
+        cut.inputs.iter().filter(|node| **node != 0).sorted_by_key(|node| self.depth[**node]).rev().enumerate().map(|(index, node)| {
             self.depth[*node] + self.lut_delay[cut.input_count()][index]
         }).max().unwrap_or(0) + self.wire_delay
     }
@@ -116,7 +115,25 @@ impl<'a> Mapper<'a> {
     #[must_use]
     #[inline]
     pub fn area_flow(&self, cut: &Cut) -> f32 {
-        (cut.inputs.iter().map(|node| self.area_flow[*node]).sum::<f32>() + self.lut_area[cut.input_count()] as f32) / (self.references[cut.output].max(1) as f32)
+        (cut.inputs.iter().map(|node| self.area_flow[*node]).sum::<f32>() + self.lut_area[cut.input_count()] as f32) / (self.references[cut.output].min(1) as f32)
+    }
+
+    #[must_use]
+    #[inline]
+    pub fn edge_flow(&self, cut: &Cut) -> f32 {
+        (cut.inputs.iter().map(|node| self.edge_flow[*node]).sum::<f32>() + cut.input_count() as f32) / (self.references[cut.output].min(1) as f32)
+    }
+
+    #[must_use]
+    #[inline]
+    pub fn exact_area(&self, cut: &Cut) -> u32 {
+        self.lut_area[cut.input_count()] + cut.inputs.iter().filter_map(|input| (*input != cut.output && self.references[*input] == 0).then(|| self.exact_area(&self.cuts[*input][0]))).sum::<u32>()
+    }
+
+    #[must_use]
+    #[inline]
+    pub fn exact_edge(&self, cut: &Cut) -> usize {
+        cut.input_count() + cut.inputs.iter().filter_map(|input| (*input != cut.output && self.references[*input] == 0).then(|| self.exact_edge(&self.cuts[*input][0]))).sum::<usize>()
     }
 
     #[must_use]
@@ -145,13 +162,37 @@ impl<'a> Mapper<'a> {
 
     #[must_use]
     #[inline]
+    pub fn cut_rank_edge_flow(&self, lhs: &Cut, rhs: &Cut) -> Ordering {
+        let lhs = self.edge_flow(lhs);
+        let rhs = self.edge_flow(rhs);
+        lhs.partial_cmp(&rhs).unwrap()
+    }
+
+    #[must_use]
+    #[inline]
     pub fn cut_rank_fanin_refs(&self, lhs: &Cut, rhs: &Cut) -> Ordering {
         let lhs = lhs.inputs.iter().map(|node| self.references[*node]).sum::<u32>() / (lhs.inputs.len() as u32);
         let rhs = rhs.inputs.iter().map(|node| self.references[*node]).sum::<u32>() / (rhs.inputs.len() as u32);
         lhs.cmp(&rhs)
     }
 
-    pub fn compute_cuts<F1, F2, F3>(&mut self, sort_first: F1, sort_second: F2, sort_third: F3) 
+    #[must_use]
+    #[inline]
+    pub fn cut_rank_exact_area(&self, lhs: &Cut, rhs: &Cut) -> Ordering {
+        let lhs = self.exact_area(lhs);
+        let rhs = self.exact_area(rhs);
+        lhs.cmp(&rhs)
+    }
+
+    #[must_use]
+    #[inline]
+    pub fn cut_rank_exact_edge(&self, lhs: &Cut, rhs: &Cut) -> Ordering {
+        let lhs = self.exact_edge(lhs);
+        let rhs = self.exact_edge(rhs);
+        lhs.cmp(&rhs)
+    }
+
+    pub fn compute_cuts<F1, F2, F3>(&mut self, sort_first: F1, sort_second: F2, sort_third: F3)
     where F1: Fn(&Self, &Cut, &Cut) -> Ordering, F2: Fn(&Self, &Cut, &Cut) -> Ordering, F3: Fn(&Self, &Cut, &Cut) -> Ordering
     {
         for node in self.mig.graph().node_indices() {
@@ -179,8 +220,8 @@ impl<'a> Mapper<'a> {
                 // Compute the trivial cut of this node.
                 let mut inputs = vec![x.index(), y.index(), z.index()];
                 let mut nodes = vec![x.index(), y.index(), z.index(), node.index()];
-                inputs.sort_unstable();
-                nodes.sort_unstable();
+                inputs.sort();
+                nodes.sort();
                 let cut = Cut::new(inputs, node.index(), nodes);
 
                 let cuts = self.cuts[x.index()].iter()
@@ -192,6 +233,7 @@ impl<'a> Mapper<'a> {
                 .filter(|candidate| candidate.input_count() <= self.max_inputs)
                 .filter(|candidate| self.required[node.index()] < 0 || self.cut_depth(candidate) <= self.required[node.index()])
                 .sorted_by(|lhs, rhs| sort_first(self, lhs, rhs).then_with(|| sort_second(self, lhs, rhs)).then_with(|| sort_third(self, lhs, rhs)))
+                .dedup()
                 .take(self.max_cuts)
                 .collect::<Vec<Cut>>();
 
@@ -218,7 +260,7 @@ impl<'a> Mapper<'a> {
         println!("Found {} cuts", cut_count);
     }
 
-    pub fn map_luts(&mut self, build_heights: bool) -> Vec<Cut> {
+    pub fn map_luts(&mut self) -> Vec<Cut> {
         let mut frontier = self.mig.graph()
             .externals(Outgoing)
             .flat_map(|output| self.mig.graph().neighbors_directed(output, Incoming))
@@ -243,7 +285,7 @@ impl<'a> Mapper<'a> {
         println!("Mapped to {} LUTs", mapping.len());
         println!("Estimated area: {} units", mapping.iter().map(|cut| self.lut_area[cut.input_count()]).sum::<u32>());
 
-        for i in 0..=self.max_inputs {
+        for i in 1..=self.max_inputs {
             println!("LUT{}: {}", i, mapping.iter().filter(|cut| cut.input_count() == i).count());
         }
 
@@ -260,7 +302,7 @@ impl<'a> Mapper<'a> {
             while let Some(node) = required_dfs.next(self.mig.graph()) {
                 if let Some(cut) = self.cuts[node.index()].first() {
                     let required = self.required[node.index()] - self.wire_delay;
-                    for (index, input) in cut.inputs().filter(|node| node.index() != 0).enumerate() {
+                    for (index, input) in cut.inputs().filter(|node| node.index() != 0).sorted_by_key(|node| self.depth[node.index()]).rev().enumerate() {
                         self.required[input.index()] = self.required[input.index()].min(required - self.lut_delay[cut.input_count()][index]);
                     }
                 }
