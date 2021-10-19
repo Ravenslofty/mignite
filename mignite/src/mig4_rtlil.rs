@@ -23,7 +23,7 @@ fn to_symbol_and_bit(s: &str) -> (&str, u32) {
         // character forward to ignore it. Subtract 1 from the length to skip
         // over the closing bracket, too.
         let bit_str = &rest[1..rest.len() - 1];
-        bit = u32::from_str_radix(bit_str, 10).expect("symbol bit index was not an integer");
+        bit = bit_str.parse::<u32>().expect("symbol bit index was not an integer");
     }
 
     (symbol, bit)
@@ -222,7 +222,7 @@ end
                         let a_ident = prep_edge(&mut writer, a_edge)?;
                         let b_ident = prep_edge(&mut writer, b_edge)?;
                         let c_ident = prep_edge(&mut writer, c_edge)?;
-    
+
                         writeln!(writer, "  cell \\majority $majority${}", node.index())?;
                         writeln!(writer, "    connect \\A {}", a_ident)?;
                         writeln!(writer, "    connect \\B {}", b_ident)?;

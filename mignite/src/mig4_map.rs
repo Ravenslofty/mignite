@@ -307,7 +307,10 @@ impl<'a> Mapper<'a> {
                 if let Some(cut) = self.cuts[node.index()].first() {
                     let required = self.required[node.index()] - self.wire_delay;
                     for (index, input) in cut.inputs().filter(|node| node.index() != 0).sorted_by_key(|node| self.depth[node.index()]).rev().enumerate() {
-                        self.required[input.index()] = self.required[input.index()].min(required - self.lut_delay[cut.input_count()][index]);
+                        if input.index() != node.index() {
+                            self.required[input.index()] = self.required[input.index()].min(required - self.lut_delay[cut.input_count()][index]);
+                            assert!(self.required[input.index()] >= 0, "node {} has negative required time of {}", input.index(), self.required[input.index()]);
+                        }
                     }
                 }
             }
