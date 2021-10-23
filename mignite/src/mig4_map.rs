@@ -285,9 +285,6 @@ impl<'a> Mapper<'a> {
             self.area_flow[node.index()] = 0.0;
             self.edge_flow[node.index()] = 0.0;
             self.references[node.index()] = 0;
-            if node.index() == 39 {
-                dbg!(self.references[node.index()]);
-            }
         }
 
         for node in self.mig.input_nodes() {
@@ -343,28 +340,13 @@ impl<'a> Mapper<'a> {
 
                 cut_count += cuts.len();
 
-                /*if let Some(prev_cut) = self.cuts[node.index()].first() {
-                    for input in &prev_cut.inputs {
-                        assert!(self.references[*input] >= 1);
-                        self.references[*input] -= 1;
-                    }
-                }*/
-
                 self.cuts[node.index()] = cuts;
                 let best_cut = &self.cuts[node.index()][0];
 
                 for input in &best_cut.inputs {
-                    if *input == 39 {
-                        dbg!(self.references[39] + 1);
-                    }
-
                     self.references[*input] += 1;
                     self.area_flow[*input] = self.area_flow(&self.cuts[*input][0]);
                     self.edge_flow[*input] = self.edge_flow(&self.cuts[*input][0]);
-                }
-
-                if node.index() == 39 {
-                    println!("Mapped node 39");
                 }
 
                 self.depth[node.index()] = self.cut_depth(best_cut);
