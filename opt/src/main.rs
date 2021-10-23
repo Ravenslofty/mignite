@@ -7,16 +7,16 @@ use mignite::mig4_map::Mapper;
 fn compute_cuts(max_cuts: usize, max_inputs: usize, lut_area: &[u32], lut_delay: &[&[i32]], wire_delay: i32, mig: &Mig) {
     let mut depth1_mapper = Mapper::new(max_cuts, max_inputs, lut_area, lut_delay, wire_delay, mig);
     depth1_mapper.compute_cuts(Mapper::cut_rank_depth, Mapper::cut_rank_size, Mapper::cut_rank_area_flow);
-    let luts = depth1_mapper.map_luts();
+    let luts = depth1_mapper.map_luts(false);
     let area = luts.iter().map(|cut| lut_area[cut.input_count()]).sum::<u32>();
     let mut best = area;
     for _ in 0..10 {
-        println!("=== AREA/EDGE FLOW ===");
+        //println!("=== AREA/EDGE FLOW ===");
         depth1_mapper.compute_cuts(Mapper::cut_rank_area_flow, Mapper::cut_rank_edge_flow, Mapper::cut_rank_fanin_refs);
-        let luts = depth1_mapper.map_luts();
-        println!("=== EXACT AREA/EDGE ===");
+        let luts = depth1_mapper.map_luts(false);
+        //println!("=== EXACT AREA/EDGE ===");
         depth1_mapper.compute_cuts(Mapper::cut_rank_exact_area, Mapper::cut_rank_exact_edge, Mapper::cut_rank_fanin_refs);
-        let luts = depth1_mapper.map_luts();
+        let luts = depth1_mapper.map_luts(false);
         let area = luts.iter().map(|cut| lut_area[cut.input_count()]).sum::<u32>();
         if area < best {
             best = area
@@ -24,14 +24,15 @@ fn compute_cuts(max_cuts: usize, max_inputs: usize, lut_area: &[u32], lut_delay:
             break;
         }
     }
+    depth1_mapper.map_luts(true);
 }
 
 fn main() {
     const UNIT_K: usize = 4;
     const UNIT_C: usize = 8;
     const UNIT_W: i32 = 1;
-    const UNIT_LUT_AREA: [u32; 5] = [0, 1, 1, 1, 1];
-    const UNIT_LUT_DELAY: [&[i32]; 5] = [&[], &[0], &[0, 0], &[0, 0, 0], &[0, 0, 0, 0]];
+    const UNIT_LUT_AREA: [u32; 7] = [0, 1, 1, 1, 1, 1, 1];
+    const UNIT_LUT_DELAY: [&[i32]; 7] = [&[], &[0], &[0, 0], &[0, 0, 0], &[0, 0, 0, 0], &[0, 0, 0, 0, 0], &[0, 0, 0, 0, 0, 0]];
 
     const ICE40HX_K: usize = 4;
     const ICE40HX_C: usize = 8;
@@ -44,6 +45,12 @@ fn main() {
     const ECP5_W: i32 = 300;
     const ECP5_LUT_AREA: [u32; 8] = [0, 1, 1, 1, 1, 2, 4, 8];
     const ECP5_LUT_DELAY: [&[i32]; 8] = [&[], &[141], &[141, 275], &[141, 275, 379], &[141, 275, 379, 379], &[151, 239, 373, 477, 477], &[148, 292, 380, 514, 618, 618], &[148, 289, 433, 521, 655, 759, 759]];
+
+    const NEXUS_K: usize = 5;
+    const NEXUS_C: usize = 8;
+    const NEXUS_W: i32 = 300;
+    const NEXUS_LUT_AREA: [u32; 6] = [0, 1, 1, 1, 1, 2];
+    const NEXUS_LUT_DELAY: [&[i32]; 6] = [&[], &[233], &[233, 233], &[233, 233, 233], &[233, 233, 233, 233], &[171, 303, 306, 309, 311]];
 
     const CV_K: usize = 6;
     const CV_C: usize = 8;
@@ -70,6 +77,11 @@ fn main() {
     println!("ECP5:");
     println!();
     compute_cuts(ECP5_C, ECP5_K, &ECP5_LUT_AREA, &ECP5_LUT_DELAY, ECP5_W, &mig);
+
+    println!();
+    println!("Nexus:");
+    println!();
+    compute_cuts(NEXUS_C, NEXUS_K, &NEXUS_LUT_AREA, &NEXUS_LUT_DELAY, NEXUS_W, &mig);
 
     println!();
     println!("Cyclone V:");

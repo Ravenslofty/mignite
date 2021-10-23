@@ -98,8 +98,8 @@ impl<'a> Mapper<'a> {
             depth: vec![-1000; len],
             max_depth: -1000,
             required: vec![-1; len],
-            area_flow: vec![1.0; len],
-            edge_flow: vec![1.0; len],
+            area_flow: vec![0.0; len],
+            edge_flow: vec![0.0; len],
             references: vec![0; len],
         }
     }
@@ -126,19 +126,103 @@ impl<'a> Mapper<'a> {
 
     #[must_use]
     #[inline]
-    pub fn exact_area(&self, cut: &Cut) -> u32 {
-        self.lut_area[cut.input_count()] + cut.inputs.iter().filter_map(|input| (*input != cut.output && self.references[*input] == 0).then(|| self.exact_area(&self.cuts[*input][0]))).sum::<u32>()
+    pub fn exact_area(&mut self, cut: &Cut) -> u32 {
+        let references = self.references.clone();
+        if let Some(repr_cut) = self.cuts[cut.output].first() {
+            if cut == repr_cut {
+                let area2 = self.exact_area_ref(cut);
+                let area1 = self.exact_area_deref(cut);
+                //assert_eq!(area1, area2);
+                self.references = references;
+                return area1;
+            }
+        }
+
+        let area1 = self.exact_area_deref(cut);
+        let area2 = self.exact_area_ref(cut);
+        //assert_eq!(area1, area2);
+        self.references = references;
+        area1
+    }
+
+    fn exact_area_deref(&mut self, cut: &Cut) -> u32 {
+        let mut area = self.lut_area[cut.input_count()];
+        for input in &cut.inputs {
+            if !self.mig.input_nodes().contains(&NodeIndex::new(*input)) && self.references[*input] >= 1 {
+                assert!(self.references[*input] >= 1, "reference count of {} is zero before decrementing", *input);
+                self.references[*input] -= 1;
+                if self.references[*input] == 0 {
+                    area += self.exact_area_deref(&self.cuts[*input][0].clone());
+                }
+            }
+        }
+        area
+    }
+
+    fn exact_area_ref(&mut self, cut: &Cut) -> u32 {
+        let mut area = self.lut_area[cut.input_count()];
+        for input in &cut.inputs {
+            if !self.mig.input_nodes().contains(&NodeIndex::new(*input)) {
+                if self.references[*input] == 0 {
+                    area += self.exact_area_ref(&self.cuts[*input][0].clone());
+                }
+                self.references[*input] += 1;
+            }
+        }
+        area
     }
 
     #[must_use]
     #[inline]
-    pub fn exact_edge(&self, cut: &Cut) -> usize {
-        cut.input_count() + cut.inputs.iter().filter_map(|input| (*input != cut.output && self.references[*input] == 0).then(|| self.exact_edge(&self.cuts[*input][0]))).sum::<usize>()
+    pub fn exact_edge(&mut self, cut: &Cut) -> usize {
+        let references = self.references.clone();
+        if let Some(repr_cut) = self.cuts[cut.output].first() {
+            if cut == repr_cut {
+                let area2 = self.exact_edge_deref(cut);
+                let area1 = self.exact_edge_ref(cut);
+                self.references = references;
+                //assert_eq!(area1, area2);
+                return area1;
+            }
+        }
+
+        let area1 = self.exact_edge_ref(cut);
+        //let area2 = self.exact_edge_deref(cut);
+        self.references = references;
+        //assert_eq!(area1, area2);
+        area1
+    }
+
+    fn exact_edge_deref(&mut self, cut: &Cut) -> usize {
+        let mut area = cut.input_count();
+        for input in &cut.inputs {
+            if !self.mig.input_nodes().contains(&NodeIndex::new(*input)) && self.references[*input] >= 1 {
+                assert!(self.references[*input] >= 1, "reference count of {} is zero before decrementing", *input);
+                self.references[*input] -= 1;
+                if self.references[*input] == 0 {
+                    area += self.exact_edge_deref(&self.cuts[*input][0].clone());
+                }
+            }
+        }
+        area
+    }
+
+    fn exact_edge_ref(&mut self, cut: &Cut) -> usize {
+        let mut area = cut.input_count();
+        for input in &cut.inputs {
+            if !self.mig.input_nodes().contains(&NodeIndex::new(*input)) {
+                if self.references[*input] == 0 {
+                    area += self.exact_edge_ref(&self.cuts[*input][0].clone());
+                }
+                self.references[*input] += 1;
+            }
+        }
+        area
     }
 
     #[must_use]
     #[inline]
-    pub fn cut_rank_depth(&self, lhs: &Cut, rhs: &Cut) -> Ordering {
+    pub fn cut_rank_depth(&mut self, lhs: &Cut, rhs: &Cut) -> Ordering {
         let lhs = self.cut_depth(lhs);
         let rhs = self.cut_depth(rhs);
         lhs.cmp(&rhs)
@@ -146,7 +230,7 @@ impl<'a> Mapper<'a> {
 
     #[must_use]
     #[inline]
-    pub fn cut_rank_size(&self, lhs: &Cut, rhs: &Cut) -> Ordering {
+    pub fn cut_rank_size(&mut self, lhs: &Cut, rhs: &Cut) -> Ordering {
         let lhs = lhs.input_count();
         let rhs = rhs.input_count();
         lhs.cmp(&rhs)
@@ -154,7 +238,7 @@ impl<'a> Mapper<'a> {
 
     #[must_use]
     #[inline]
-    pub fn cut_rank_area_flow(&self, lhs: &Cut, rhs: &Cut) -> Ordering {
+    pub fn cut_rank_area_flow(&mut self, lhs: &Cut, rhs: &Cut) -> Ordering {
         let lhs = self.area_flow(lhs);
         let rhs = self.area_flow(rhs);
         lhs.partial_cmp(&rhs).unwrap()
@@ -162,7 +246,7 @@ impl<'a> Mapper<'a> {
 
     #[must_use]
     #[inline]
-    pub fn cut_rank_edge_flow(&self, lhs: &Cut, rhs: &Cut) -> Ordering {
+    pub fn cut_rank_edge_flow(&mut self, lhs: &Cut, rhs: &Cut) -> Ordering {
         let lhs = self.edge_flow(lhs);
         let rhs = self.edge_flow(rhs);
         lhs.partial_cmp(&rhs).unwrap()
@@ -170,7 +254,7 @@ impl<'a> Mapper<'a> {
 
     #[must_use]
     #[inline]
-    pub fn cut_rank_fanin_refs(&self, lhs: &Cut, rhs: &Cut) -> Ordering {
+    pub fn cut_rank_fanin_refs(&mut self, lhs: &Cut, rhs: &Cut) -> Ordering {
         let lhs = lhs.inputs.iter().map(|node| self.references[*node]).sum::<u32>() / (lhs.inputs.len() as u32);
         let rhs = rhs.inputs.iter().map(|node| self.references[*node]).sum::<u32>() / (rhs.inputs.len() as u32);
         lhs.cmp(&rhs)
@@ -178,7 +262,7 @@ impl<'a> Mapper<'a> {
 
     #[must_use]
     #[inline]
-    pub fn cut_rank_exact_area(&self, lhs: &Cut, rhs: &Cut) -> Ordering {
+    pub fn cut_rank_exact_area(&mut self, lhs: &Cut, rhs: &Cut) -> Ordering {
         let lhs = self.exact_area(lhs);
         let rhs = self.exact_area(rhs);
         lhs.cmp(&rhs)
@@ -186,20 +270,24 @@ impl<'a> Mapper<'a> {
 
     #[must_use]
     #[inline]
-    pub fn cut_rank_exact_edge(&self, lhs: &Cut, rhs: &Cut) -> Ordering {
+    pub fn cut_rank_exact_edge(&mut self, lhs: &Cut, rhs: &Cut) -> Ordering {
         let lhs = self.exact_edge(lhs);
         let rhs = self.exact_edge(rhs);
         lhs.cmp(&rhs)
     }
 
+    #[allow(clippy::missing_panics_doc)]
     pub fn compute_cuts<F1, F2, F3>(&mut self, sort_first: F1, sort_second: F2, sort_third: F3)
-    where F1: Fn(&Self, &Cut, &Cut) -> Ordering, F2: Fn(&Self, &Cut, &Cut) -> Ordering, F3: Fn(&Self, &Cut, &Cut) -> Ordering
+    where F1: Fn(&mut Self, &Cut, &Cut) -> Ordering, F2: Fn(&mut Self, &Cut, &Cut) -> Ordering, F3: Fn(&mut Self, &Cut, &Cut) -> Ordering
     {
         for node in self.mig.graph().node_indices() {
             self.depth[node.index()] = -1000;
             self.area_flow[node.index()] = 0.0;
             self.edge_flow[node.index()] = 0.0;
             self.references[node.index()] = 0;
+            if node.index() == 39 {
+                dbg!(self.references[node.index()]);
+            }
         }
 
         for node in self.mig.input_nodes() {
@@ -207,6 +295,12 @@ impl<'a> Mapper<'a> {
             self.depth[node.index()] = 0;
             self.area_flow[node.index()] = 0.0;
             self.edge_flow[node.index()] = 0.0;
+        }
+
+        for node in self.mig.graph().externals(Outgoing) {
+            if let mig4::MigNode::Output(node) = self.mig.graph()[node] {
+                self.references[node as usize] = 1;
+            }
         }
 
         let mut iter = petgraph::visit::Topo::new(self.mig.graph());
@@ -222,35 +316,55 @@ impl<'a> Mapper<'a> {
                 // Compute the trivial cut of this node.
                 let mut inputs = vec![x.index(), y.index(), z.index()];
                 let mut nodes = vec![x.index(), y.index(), z.index(), node.index()];
-                inputs.sort();
-                nodes.sort();
+                inputs.sort_unstable();
+                nodes.sort_unstable();
                 let cut = Cut::new(inputs, node.index(), nodes);
+
+                let max_inputs = self.max_inputs;
+                let required = self.required[node.index()];
 
                 let cuts = self.cuts[x.index()].iter()
                 .cartesian_product(&self.cuts[y.index()])
                 .cartesian_product(&self.cuts[z.index()])
                 .map(|((x_cut, y_cut), z_cut)| Cut::union(x_cut, y_cut, z_cut, node.index()))
-                .chain(std::iter::once(cut.clone()))
+                .chain(std::iter::once(cut))
                 .chain(self.cuts[node.index()].first().cloned())
-                .filter(|candidate| candidate.input_count() <= self.max_inputs)
-                .filter(|candidate| self.required[node.index()] < 0 || self.cut_depth(candidate) <= self.required[node.index()])
+                .filter(|candidate| candidate.input_count() <= max_inputs)
+                .filter(|candidate| required < 0 || self.cut_depth(candidate) <= required)
+                .collect_vec();
+
+                let cuts = cuts.into_iter()
                 .sorted_by(|lhs, rhs| sort_first(self, lhs, rhs).then_with(|| sort_second(self, lhs, rhs)).then_with(|| sort_third(self, lhs, rhs)))
                 .dedup()
                 .take(self.max_cuts)
-                .collect::<Vec<Cut>>();
+                .collect_vec();
 
                 assert!(!cuts.is_empty());
 
                 cut_count += cuts.len();
 
-                self.cuts[node.index()] = cuts;
+                /*if let Some(prev_cut) = self.cuts[node.index()].first() {
+                    for input in &prev_cut.inputs {
+                        assert!(self.references[*input] >= 1);
+                        self.references[*input] -= 1;
+                    }
+                }*/
 
+                self.cuts[node.index()] = cuts;
                 let best_cut = &self.cuts[node.index()][0];
 
                 for input in &best_cut.inputs {
+                    if *input == 39 {
+                        dbg!(self.references[39] + 1);
+                    }
+
                     self.references[*input] += 1;
                     self.area_flow[*input] = self.area_flow(&self.cuts[*input][0]);
                     self.edge_flow[*input] = self.edge_flow(&self.cuts[*input][0]);
+                }
+
+                if node.index() == 39 {
+                    println!("Mapped node 39");
                 }
 
                 self.depth[node.index()] = self.cut_depth(best_cut);
@@ -264,7 +378,8 @@ impl<'a> Mapper<'a> {
         println!("Found {} cuts", cut_count);
     }
 
-    pub fn map_luts(&mut self) -> Vec<Cut> {
+    #[allow(clippy::missing_panics_doc)]
+    pub fn map_luts(&mut self, print_stats: bool) -> Vec<Cut> {
         let mut frontier = self.mig.graph()
             .externals(Outgoing)
             .flat_map(|output| self.mig.graph().neighbors_directed(output, Incoming))
@@ -278,7 +393,7 @@ impl<'a> Mapper<'a> {
             let cut = &self.cuts[node.index()][0];
             for input in cut.inputs().filter(|node| node.index() != 0) {
                 if !mapped_nodes.contains(&input) && !input_nodes.contains(&input) {
-                    frontier.push(input)
+                    frontier.push(input);
                 }
             }
 
@@ -286,14 +401,16 @@ impl<'a> Mapper<'a> {
             mapping.push(cut.clone());
         }
 
-        println!("Mapped to {} LUTs", mapping.len());
-        println!("Estimated area: {} units", mapping.iter().map(|cut| self.lut_area[cut.input_count()]).sum::<u32>());
+        if print_stats {
+            println!("Mapped to {} LUTs", mapping.len());
+            println!("Estimated area: {} units", mapping.iter().map(|cut| self.lut_area[cut.input_count()]).sum::<u32>());
 
-        for i in 1..=self.max_inputs {
-            println!("LUT{}: {}", i, mapping.iter().filter(|cut| cut.input_count() == i).count());
+            for i in 1..=self.max_inputs {
+                println!("LUT{}: {}", i, mapping.iter().filter(|cut| cut.input_count() == i).count());
+            }
+
+            println!("Maximum delay: {}", self.max_depth);
         }
-
-        println!("Maximum delay: {}", self.max_depth);
 
         for node in self.mig.graph().node_indices() {
             self.required[node.index()] = self.max_depth;
