@@ -10,36 +10,40 @@ fn compute_cuts(max_cuts: usize, max_inputs: usize, lut_area: &[u32], lut_delay:
     let luts = depth1_mapper.map_luts(true);
     let area = luts.iter().map(|cut| lut_area[cut.input_count()]).sum::<u32>();
     let mut best = area;
+    let mut best_result = luts;
 
-    for _ in 1..=2 {
+    for _ in 1..=5 {
         depth1_mapper.compute_cuts(Mapper::cut_rank_area_flow, Mapper::cut_rank_edge_flow, Mapper::cut_rank_fanin_refs);
         let luts = depth1_mapper.map_luts(false);
+        let area = luts.iter().map(|cut| lut_area[cut.input_count()]).sum::<u32>();
+        if area < best {
+            best = area;
+            best_result = luts;
+            println!("[new best]");
+        }
     }
 
-    for _ in 1..=2 {
-        depth1_mapper.compute_cuts(Mapper::cut_rank_exact_area, Mapper::cut_rank_exact_edge, Mapper::cut_rank_fanin_refs);
-        let luts = depth1_mapper.map_luts(false);
-    }
-
-    /*for _ in 0..10 {
-        //println!("=== AREA/EDGE FLOW ===");
-        depth1_mapper.compute_cuts(Mapper::cut_rank_area_flow, Mapper::cut_rank_edge_flow, Mapper::cut_rank_fanin_refs);
-        let luts = depth1_mapper.map_luts(false);
-        //println!("=== EXACT AREA/EDGE ===");
+    for _ in 1..=5 {
         depth1_mapper.compute_cuts(Mapper::cut_rank_exact_area, Mapper::cut_rank_exact_edge, Mapper::cut_rank_fanin_refs);
         let luts = depth1_mapper.map_luts(false);
         let area = luts.iter().map(|cut| lut_area[cut.input_count()]).sum::<u32>();
         if area < best {
-            best = area
-        } else {
-            break;
+            best = area;
+            best_result = luts;
+            println!("[new best]");
         }
-    }*/
-    depth1_mapper.map_luts(true);
+    }
+
+    println!("Mapped to {} LUTs", best_result.len());
+    println!("Estimated area: {} units", best_result.iter().map(|cut| lut_area[cut.input_count()]).sum::<u32>());
+
+    for i in 1..=max_inputs {
+        println!("LUT{}: {}", i, best_result.iter().filter(|cut| cut.input_count() == i).count());
+    }
 }
 
 fn main() {
-    const UNIT_K: usize = 4;
+    const UNIT_K: usize = 6;
     const UNIT_C: usize = 8;
     const UNIT_W: i32 = 1;
     const UNIT_LUT_AREA: [u32; 7] = [0, 1, 1, 1, 1, 1, 1];

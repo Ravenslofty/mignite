@@ -311,10 +311,12 @@ impl<'a> Mapper<'a> {
                 let z = self.mig.edge_source(z_edge);
 
                 // Compute the trivial cut of this node.
-                let mut inputs = vec![x.index(), y.index(), z.index()];
-                let mut nodes = vec![x.index(), y.index(), z.index(), node.index()];
-                inputs.sort_unstable();
-                nodes.sort_unstable();
+                //let mut inputs = vec![x.index(), y.index(), z.index()];
+                //let mut nodes = vec![x.index(), y.index(), z.index(), node.index()];
+                let mut inputs = vec![node.index()];
+                let mut nodes = vec![node.index()];
+                //inputs.sort_unstable();
+                //nodes.sort_unstable();
                 let cut = Cut::new(inputs, node.index(), nodes);
 
                 let max_inputs = self.max_inputs;
