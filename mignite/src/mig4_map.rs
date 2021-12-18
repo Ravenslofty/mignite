@@ -324,17 +324,18 @@ impl<'a> Mapper<'a> {
                 .cartesian_product(&self.cuts[y.index()])
                 .cartesian_product(&self.cuts[z.index()])
                 .map(|((x_cut, y_cut), z_cut)| Cut::union(x_cut, y_cut, z_cut, node.index()))
-                .chain(std::iter::once(cut))
                 .chain(self.cuts[node.index()].first().cloned())
                 .filter(|candidate| candidate.input_count() <= max_inputs)
                 .filter(|candidate| required < 0 || self.cut_depth(candidate) <= required)
                 .collect_vec();
 
-                let cuts = cuts.into_iter()
+                let mut cuts = cuts.into_iter()
                 .sorted_by(|lhs, rhs| sort_first(self, lhs, rhs).then_with(|| sort_second(self, lhs, rhs)).then_with(|| sort_third(self, lhs, rhs)))
                 .dedup()
                 .take(self.max_cuts)
                 .collect_vec();
+
+                cuts.push(cut);
 
                 assert!(!cuts.is_empty());
 
